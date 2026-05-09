@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -132,7 +133,6 @@ jobs:
 
       - name: Publish platform packages
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ needs.verify_release.outputs.version }}
         run: |
           tar_dir="$(realpath "${{ steps.download_tarballs.outputs.download-path }}")"
@@ -151,7 +151,6 @@ jobs:
 
       - name: Publish wrapper package
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ needs.verify_release.outputs.version }}
         run: |
           tar_dir="$(realpath "${{ steps.download_tarballs.outputs.download-path }}")"

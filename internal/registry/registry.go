@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -517,6 +518,12 @@ func (r *Registry) AllPackages() ([]PackageSummary, error) {
 	for _, v := range pkgMap {
 		result = append(result, *v)
 	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Name != result[j].Name {
+			return result[i].Name < result[j].Name
+		}
+		return result[i].Version < result[j].Version
+	})
 	return result, rows.Err()
 }
 

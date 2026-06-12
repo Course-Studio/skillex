@@ -2,6 +2,7 @@ package cli
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 )
@@ -47,8 +48,39 @@ packages, follow repo conventions, and work safely in a codebase.`,
 	)
 }
 
-// repoRoot returns the working directory or panics.
+// findRepoRoot walks upward from startDir looking for skillex.json or
+// skillex.yaml. Returns the nearest directory containing one, or startDir
+// unchanged when no config exists anywhere above (commands then fail with
+// their usual "config not found" / "registry not found" errors).
+func findRepoRoot(startDir string) string {
+	dir := startDir
+	for {
+		for _, name := range []string{"skillex.json", "skillex.yaml"} {
+			if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+				return dir
+			}
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return startDir
+		}
+		dir = parent
+	}
+}
+
+// repoRoot returns the skillex repo root for the current working directory.
 func repoRoot() string {
+	wd, err := os.Getwd()
+	if err != nil {
+		return "."
+	}
+	return findRepoRoot(wd)
+}
+
+// initRoot returns the directory `skillex init` operates on: always the
+// current working directory — init must be able to create a new repo root
+// inside a larger tree without being captured by an ancestor config.
+func initRoot() string {
 	wd, err := os.Getwd()
 	if err != nil {
 		return "."

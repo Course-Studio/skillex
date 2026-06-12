@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/atheory-ai/skillex/test/helpers"
+	"github.com/Course-Studio/skillex/test/helpers"
 )
 
 func TestRefresh_AgentsMdUpdated(t *testing.T) {

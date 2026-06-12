@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/atheory-ai/skillex/internal/config"
-	"github.com/atheory-ai/skillex/internal/scanner"
+	"github.com/Course-Studio/skillex/internal/config"
+	"github.com/Course-Studio/skillex/internal/scanner"
 	"github.com/gobwas/glob"
 )
 

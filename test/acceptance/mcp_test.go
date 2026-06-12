@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/atheory-ai/skillex/test/helpers"
+	"github.com/Course-Studio/skillex/test/helpers"
 )
 
 func TestMCP_ServerStarts(t *testing.T) {

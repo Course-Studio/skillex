@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/atheory-ai/skillex/internal/query"
-	"github.com/atheory-ai/skillex/internal/registry"
+	"github.com/Course-Studio/skillex/internal/query"
+	"github.com/Course-Studio/skillex/internal/registry"
 )
 
 func newQueryCmd() *cobra.Command {

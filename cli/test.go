@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/atheory-ai/skillex/internal/config"
-	"github.com/atheory-ai/skillex/internal/validator"
+	"github.com/Course-Studio/skillex/internal/config"
+	"github.com/Course-Studio/skillex/internal/validator"
 )
 
 func newTestCmd() *cobra.Command {

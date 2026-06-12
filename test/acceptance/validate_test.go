@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/atheory-ai/skillex/test/helpers"
+	"github.com/Course-Studio/skillex/test/helpers"
 )
 
 type validateIssue struct {

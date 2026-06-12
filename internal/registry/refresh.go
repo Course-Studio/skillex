@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/atheory-ai/skillex/internal/config"
-	"github.com/atheory-ai/skillex/internal/linker"
-	"github.com/atheory-ai/skillex/internal/scanner"
-	"github.com/atheory-ai/skillex/internal/validator"
+	"github.com/Course-Studio/skillex/internal/config"
+	"github.com/Course-Studio/skillex/internal/linker"
+	"github.com/Course-Studio/skillex/internal/scanner"
+	"github.com/Course-Studio/skillex/internal/validator"
 )
 
 // RefreshOptions controls the refresh behavior.

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/atheory-ai/skillex/test/helpers"
+	"github.com/Course-Studio/skillex/test/helpers"
 )
 
 func TestEdge_NoDependencies(t *testing.T) {

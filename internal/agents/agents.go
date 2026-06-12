@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/atheory-ai/skillex/internal/registry"
+	"github.com/Course-Studio/skillex/internal/registry"
 )
 
 const (

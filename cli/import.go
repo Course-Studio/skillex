@@ -80,6 +80,11 @@ func runImport(root, filePath, dest, visibility string, topics []string, skipRev
 		return fmt.Errorf("reading file: %w", err)
 	}
 
+	// Reject HTML payloads
+	if isHTMLContent(data) {
+		return fmt.Errorf("%s looks like an HTML page, not a Markdown skill file", filePath)
+	}
+
 	// Review
 	if !skipReview {
 		issues := reviewContent(data)
@@ -89,13 +94,14 @@ func runImport(root, filePath, dest, visibility string, topics []string, skipRev
 			for _, iss := range issues {
 				fmt.Fprintf(os.Stderr, "  %s %s\n", styleDim.Render("•"), iss)
 			}
-			if !flagQuiet {
-				fmt.Fprint(os.Stderr, "\nProceed anyway? [y/N] ")
-				var answer string
-				fmt.Scanln(&answer)
-				if strings.ToLower(answer) != "y" {
-					return fmt.Errorf("aborted by user")
-				}
+			if flagQuiet || !stdinIsInteractive() {
+				return fmt.Errorf("safety review flagged %d issue(s); rerun interactively to confirm, or use --skip-review for trusted sources", len(issues))
+			}
+			fmt.Fprint(os.Stderr, "\nProceed anyway? [y/N] ")
+			var answer string
+			fmt.Scanln(&answer)
+			if strings.ToLower(answer) != "y" {
+				return fmt.Errorf("aborted by user")
 			}
 		}
 	}

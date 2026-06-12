@@ -1,5 +1,11 @@
 # Skillex
 
+> This is the Course Studio fork of [skillex](https://github.com/atheory-ai/skillex),
+> created by Jeremy (atheory.ai) — credited permanently in the package name
+> `@course-studio/skillex-by-jeremy`. The fork optimizes for Claude Code as the
+> first-class agent harness. Changes from upstream are listed in CHANGELOG.md
+> (Apache-2.0, section 4(b) change notice). The CLI command remains `skillex`.
+
 Skill management for AI agents in Node.js projects.
 
 Skillex helps agents load the right guidance for the code they are working on without dumping an entire repo's docs into context. It indexes repo skills, package skills, scope rules, and installed package versions, then answers targeted queries in microseconds.

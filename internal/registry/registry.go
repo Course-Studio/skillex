@@ -149,7 +149,8 @@ func (r *Registry) Clear() error {
 // InsertSkill inserts a skill into the registry.
 func (r *Registry) InsertSkill(s Skill) (int64, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
-	res, err := r.db.Exec(
+	var id int64
+	err := r.db.QueryRow(
 		`INSERT INTO skills (path, content, name, description, package_name, package_ver, visibility, source_type, indexed_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(path) DO UPDATE SET
@@ -160,22 +161,14 @@ func (r *Registry) InsertSkill(s Skill) (int64, error) {
 			package_ver=excluded.package_ver,
 			visibility=excluded.visibility,
 			source_type=excluded.source_type,
-			indexed_at=excluded.indexed_at`,
+			indexed_at=excluded.indexed_at
+		 RETURNING id`,
 		s.Path, s.Content, nullStr(s.Name), nullStr(s.Description),
 		nullStr(s.PackageName), nullStr(s.PackageVersion),
 		s.Visibility, s.SourceType, now,
-	)
+	).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("inserting skill %s: %w", s.Path, err)
-	}
-
-	id, err := res.LastInsertId()
-	if err != nil {
-		// ON CONFLICT path: get the existing ID
-		id, err = r.getSkillIDByPath(s.Path)
-		if err != nil {
-			return 0, err
-		}
 	}
 
 	// Delete and re-insert topics, tags, scopes
@@ -221,13 +214,6 @@ func (r *Registry) InsertTestScenario(t TestScenario) error {
 		strings.Join(t.Criteria, "\n"),
 	)
 	return err
-}
-
-// getSkillIDByPath retrieves a skill ID by path.
-func (r *Registry) getSkillIDByPath(path string) (int64, error) {
-	var id int64
-	err := r.db.QueryRow(`SELECT id FROM skills WHERE path = ?`, path).Scan(&id)
-	return id, err
 }
 
 // GetSkillByPath retrieves a skill by its path.

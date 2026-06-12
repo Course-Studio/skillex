@@ -86,7 +86,7 @@ npm-publish: npm-stage
 	cd npm/linux-arm64  && npm publish --access public
 	cd npm/win32-x64    && npm publish --access public
 	cd npm/skillex      && npm publish --access public
-	@echo "Published @atheory-ai/skillex@$(VERSION) and all platform packages."
+	@echo "Published @course-studio/skillex-by-jeremy@$(VERSION) and all platform packages."
 
 # ── Repo workflow ────────────────────────────────────────────────────────────
 

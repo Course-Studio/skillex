@@ -1,11 +1,11 @@
 {
-  "name": "@atheory-ai/skillex-linux-x64",
+  "name": "@course-studio/skillex-by-jeremy-linux-x64",
   "version": "0.6.4",
-  "description": "Linux x64 binary for @atheory-ai/skillex",
+  "description": "Linux x64 binary for @course-studio/skillex-by-jeremy",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/atheory-ai/skillex"
+    "url": "https://github.com/Course-Studio/skillex"
   },
   "os": [
     "linux"

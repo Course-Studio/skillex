@@ -90,11 +90,11 @@ That is the core difference: Skillex moves scope resolution out of the model's p
 ### npm (recommended for Node.js projects)
 
 ```bash
-npm install --save-dev @atheory-ai/skillex
+npm install --save-dev @course-studio/skillex-by-jeremy
 # or
-pnpm add -D @atheory-ai/skillex
+pnpm add -D @course-studio/skillex-by-jeremy
 # or
-yarn add -D @atheory-ai/skillex
+yarn add -D @course-studio/skillex-by-jeremy
 ```
 
 The package automatically installs the correct binary for your platform (macOS arm64/x64, Linux arm64/x64, Windows x64) via npm's `optionalDependencies` mechanism — only the binary for your OS is downloaded.

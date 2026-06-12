@@ -15,7 +15,7 @@ Skillex helps agents load the right guidance for the code they are working on wi
 ## Install
 
 ```bash
-npm install --save-dev @atheory-ai/skillex
+npm install --save-dev @course-studio/skillex-by-jeremy
 ```
 
 The wrapper package installs the correct native binary for your platform through npm `optionalDependencies`.
@@ -66,5 +66,5 @@ Without scoped skill retrieval, agents either get too little context or far too 
 
 ## Repository
 
-- Source: https://github.com/atheory-ai/skillex
-- Documentation: https://github.com/atheory-ai/skillex/blob/main/README.md
+- Source: https://github.com/Course-Studio/skillex
+- Documentation: https://github.com/Course-Studio/skillex/blob/main/README.md

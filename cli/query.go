@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 
@@ -161,6 +162,15 @@ Examples:
 	return cmd
 }
 
+// truncateDescription shortens s to at most 120 runes (ellipsis included),
+// cutting on a rune boundary so a multibyte description stays valid UTF-8.
+func truncateDescription(s string) string {
+	if utf8.RuneCountInString(s) <= 120 {
+		return s
+	}
+	return string([]rune(s)[:117]) + "..."
+}
+
 func printSummary(results []query.Result) {
 	for _, r := range results {
 		fmt.Printf("%s\n", styleSuccess.Render(r.Path))
@@ -169,11 +179,7 @@ func printSummary(results []query.Result) {
 			fmt.Printf("  %s\n", r.Name)
 		}
 		if r.Description != "" {
-			desc := r.Description
-			if len(desc) > 120 {
-				desc = desc[:117] + "..."
-			}
-			fmt.Printf("  %s\n", styleDim.Render(desc))
+			fmt.Printf("  %s\n", styleDim.Render(truncateDescription(r.Description)))
 		}
 
 		var meta []string

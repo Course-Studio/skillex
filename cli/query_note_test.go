@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/course-studio/skillex/internal/query"
 )
@@ -53,5 +54,17 @@ func TestQueryCmd_SearchHelpMentionsTopicsAndTags(t *testing.T) {
 	usage := newQueryCmd().Flags().Lookup("search").Usage
 	if !strings.Contains(usage, "topics") || !strings.Contains(usage, "tags") {
 		t.Errorf("--search usage is stale (missing topics/tags): %q", usage)
+	}
+}
+
+// TestTruncateDescription_RuneSafe: the summary renderer must truncate on a rune
+// boundary, not a raw byte offset, or a multibyte description becomes invalid UTF-8.
+func TestTruncateDescription_RuneSafe(t *testing.T) {
+	long := strings.Repeat("a", 116) + strings.Repeat("€", 10) // byte 117 lands mid-rune
+	if out := truncateDescription(long); !utf8.ValidString(out) {
+		t.Errorf("truncateDescription split a rune (invalid UTF-8): %q", out)
+	}
+	if got := truncateDescription("short"); got != "short" {
+		t.Errorf("truncateDescription(short) = %q, want unchanged", got)
 	}
 }

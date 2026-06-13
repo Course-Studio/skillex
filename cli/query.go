@@ -31,8 +31,8 @@ func newQueryCmd() *cobra.Command {
 All filters are intersected — only skills matching all specified criteria are returned.
 
 Use --search for intent-based discovery when you don't know the topic/tag taxonomy.
-Each space or comma-separated term is matched independently against skill names and
-descriptions, so multiple concepts can be found in one call.
+Each space or comma-separated term is matched independently against skill names,
+descriptions, topics, and tags, so multiple concepts can be found in one call.
 
 When no filters are provided, a vocabulary response is returned listing the available
 topics, tags, and packages you can filter by.
@@ -155,7 +155,7 @@ Examples:
 	cmd.Flags().StringVar(&topicFlag, "topic", "", "Comma-separated topic filters")
 	cmd.Flags().StringVar(&tagsFlag, "tags", "", "Comma-separated tag filters")
 	cmd.Flags().StringVar(&packageFlag, "package", "", "Package name filter")
-	cmd.Flags().StringVar(&searchFlag, "search", "", "Keyword search across skill names and descriptions (space/comma-separated terms)")
+	cmd.Flags().StringVar(&searchFlag, "search", "", "Keyword search across skill names, descriptions, topics, and tags (space/comma-separated terms)")
 	cmd.Flags().StringVar(&formatFlag, "format", "", "Output format: content (default) or summary")
 
 	return cmd
@@ -254,5 +254,10 @@ func printNoMatch(resp *query.Response) {
 		header += " (" + strings.Join(parts, ", ") + ")"
 	}
 	header += "."
+	// Surface the engine's explanatory note (e.g. an out-of-repo --path) on the
+	// human surface too — it already reaches agents via --json/MCP.
+	if resp.Note != "" {
+		fmt.Fprintln(os.Stderr, styleDim.Render(resp.Note))
+	}
 	printVocabulary(resp.Vocabulary, header)
 }

@@ -131,12 +131,22 @@ func New(reg *registry.Registry, root string) *Engine {
 }
 
 // repoRelativePath normalizes a query path against the repo root.
-// Returns (relative-slash-path, false) for relative paths or absolute paths
-// inside root, or ("", true) when the path is absolute and outside root.
-// The repo root itself maps to "" (which the caller treats as match-all).
+// Returns (relative-slash-path, false) for in-repo paths, or ("", true) when the
+// path escapes root (absolute-and-outside, or a relative path climbing out via
+// "../"). The repo root itself maps to "" (which the caller treats as match-all).
+//
+// It does not resolve symlinks (filepath.EvalSymlinks): a path that lexically lives
+// inside root but points through a symlink to outside is classified as inside. That
+// is safe here only because the normalized path is used purely as a scope-glob
+// matching key and no file is ever opened at it; revisit if that ever changes.
 func repoRelativePath(path, root string) (string, bool) {
 	path = strings.ReplaceAll(path, "\\", "/")
 	if !filepath.IsAbs(path) {
+		// A relative path that climbs out of the repo (../foo) is outside-repo too;
+		// mirror the absolute-path check so it gets the same no_match+note treatment.
+		if cleaned := filepath.ToSlash(filepath.Clean(path)); cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+			return "", true
+		}
 		return path, false
 	}
 	if root == "" {

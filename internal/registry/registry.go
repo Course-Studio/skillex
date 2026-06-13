@@ -258,6 +258,22 @@ func (r *Registry) GetSkillByPath(path string) (*Skill, error) {
 	return s, nil
 }
 
+// GetSkillContent returns just the content column for the skill at path, or ""
+// when no such skill exists. Unlike GetSkillByPath it skips the topic/tag/scope
+// metadata follow-up queries, for read paths (e.g. MCP resource reads) that only
+// need the body.
+func (r *Registry) GetSkillContent(path string) (string, error) {
+	var content string
+	err := r.db.QueryRow(`SELECT content FROM skills WHERE path = ?`, path).Scan(&content)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return content, nil
+}
+
 // QueryByScope returns all skills visible from the given scope globs.
 func (r *Registry) QueryByScope(scopes []string) ([]Skill, error) {
 	if len(scopes) == 0 {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	mcplib "github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -46,7 +47,7 @@ func Serve(reg *registry.Registry, root, version string) error {
 		),
 		mcplib.WithString("search",
 			mcplib.Description(
-				"Keyword search across skill names and descriptions. "+
+				"Keyword search across skill names, descriptions, topics, and tags. "+
 					"Space or comma-separated terms are each matched independently — "+
 					"use this to find skills by concept when you don't know the topic/tag taxonomy. "+
 					"Example: 'search card pagination' finds all skills related to any of those terms.",
@@ -102,14 +103,9 @@ func Serve(reg *registry.Registry, root, version string) error {
 // an empty string rather than an error.
 func resourceContentFunc(reg *registry.Registry, path string) func() (string, error) {
 	return func() (string, error) {
-		sk, err := reg.GetSkillByPath(path)
-		if err != nil {
-			return "", err
-		}
-		if sk == nil {
-			return "", nil
-		}
-		return sk.Content, nil
+		// Content-only read: avoids the topic/tag/scope metadata queries that
+		// GetSkillByPath runs, which this closure would only discard.
+		return reg.GetSkillContent(path)
 	}
 }
 
@@ -237,8 +233,8 @@ func skillDescription(s registry.Skill) string {
 	}
 	if s.Description != "" {
 		desc := s.Description
-		if len(desc) > 120 {
-			desc = desc[:117] + "..."
+		if utf8.RuneCountInString(desc) > 120 {
+			desc = string([]rune(desc)[:117]) + "..."
 		}
 		parts = append(parts, desc)
 	}

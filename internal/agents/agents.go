@@ -95,8 +95,10 @@ func GenerateSectionWithCutoff(reg *registry.Registry, cutoff int) (string, erro
 	sb.WriteString("```\n\n")
 
 	if len(skills) > 0 && len(skills) <= cutoff {
-		sb.WriteString("### Skills\n\n")
-		sb.WriteString("The skills available in this repository, grouped by the path scope that loads them:\n\n")
+		// Build the per-scope body first; only emit the heading + intro if at least
+		// one scope yielded a skill line. Otherwise (e.g. every skill is scope-less)
+		// we would print a dangling "### Skills" section with nothing underneath.
+		var body strings.Builder
 		for _, scope := range scopes {
 			var lines []string
 			for _, sk := range skills {
@@ -117,11 +119,16 @@ func GenerateSectionWithCutoff(reg *registry.Registry, cutoff int) (string, erro
 			if len(lines) == 0 {
 				continue
 			}
-			sb.WriteString(fmt.Sprintf("`%s`\n", scope))
+			body.WriteString(fmt.Sprintf("`%s`\n", scope))
 			for _, l := range lines {
-				sb.WriteString(l + "\n")
+				body.WriteString(l + "\n")
 			}
-			sb.WriteString("\n")
+			body.WriteString("\n")
+		}
+		if body.Len() > 0 {
+			sb.WriteString("### Skills\n\n")
+			sb.WriteString("The skills available in this repository, grouped by the path scope that loads them:\n\n")
+			sb.WriteString(body.String())
 		}
 	}
 

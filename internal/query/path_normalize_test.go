@@ -27,6 +27,8 @@ func TestRepoRelativePath(t *testing.T) {
 		{"/elsewhere/x.ts", "/repo", "", true},
 		{"/repo", "/repo", "", false},
 		{"clients\\epgm\\App.tsx", "/repo", "clients/epgm/App.tsx", false},
+		{"../../etc/passwd", "/repo", "", true},                  // relative path escaping the repo is outside too
+		{"sub/../within.ts", "/repo", "sub/../within.ts", false}, // relative path that stays inside is unchanged
 	}
 	for _, c := range cases {
 		rel, outside := repoRelativePath(c.path, c.root)

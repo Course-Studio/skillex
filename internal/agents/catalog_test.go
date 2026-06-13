@@ -19,6 +19,27 @@ func newReg(t *testing.T) *registry.Registry {
 	return reg
 }
 
+func TestGenerateSection_NoDanglingSkillsHeadingWhenNoScopes(t *testing.T) {
+	reg := newReg(t)
+	// A scope-less skill is reachable (the linker drops scopes for some dependency
+	// skills) and is still inserted and counted. The catalog must not emit a
+	// "### Skills" heading + intro with no skill lines underneath it.
+	if _, err := reg.InsertSkill(registry.Skill{
+		Path: "skills/orphan.md", Content: "x", Visibility: "repo", SourceType: "repo",
+		Name: "Orphan", Description: "Has no scopes.",
+		Scopes: nil,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := GenerateSection(reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "### Skills") {
+		t.Errorf("emitted a dangling Skills heading with no scoped skill lines:\n%s", out)
+	}
+}
+
 func TestGenerateSection_ListsSkillsPerScope(t *testing.T) {
 	reg := newReg(t)
 	if _, err := reg.InsertSkill(registry.Skill{

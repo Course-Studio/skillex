@@ -62,7 +62,7 @@ Examples:
 			}
 			defer reg.Close()
 
-			eng := query.New(reg)
+			eng := query.New(reg, root)
 
 			var topics []string
 			if topicFlag != "" {

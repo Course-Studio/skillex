@@ -1,6 +1,7 @@
 package query
 
 import (
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -39,6 +40,7 @@ type Response struct {
 	Results    []Result     `json:"results,omitempty"`
 	Vocabulary *Vocabulary  `json:"vocabulary,omitempty"`
 	Query      *QueryEcho   `json:"query,omitempty"`
+	Note       string       `json:"note,omitempty"`
 }
 
 // QueryEcho captures the filters that were searched, included in no_match responses.
@@ -118,12 +120,40 @@ func (p Params) hasFilters() bool {
 
 // Engine executes structured skill queries against the registry.
 type Engine struct {
-	reg *registry.Registry
+	reg  *registry.Registry
+	root string
 }
 
-// New creates a new query Engine.
-func New(reg *registry.Registry) *Engine {
-	return &Engine{reg: reg}
+// New creates a query Engine. root is the repo root used to normalize
+// absolute --path arguments to repo-relative form; pass "" to disable.
+func New(reg *registry.Registry, root string) *Engine {
+	return &Engine{reg: reg, root: root}
+}
+
+// repoRelativePath normalizes a query path against the repo root.
+// Returns (relative-slash-path, false) for relative paths or absolute paths
+// inside root, or ("", true) when the path is absolute and outside root.
+// The repo root itself maps to "" (which the caller treats as match-all).
+func repoRelativePath(path, root string) (string, bool) {
+	path = strings.ReplaceAll(path, "\\", "/")
+	if !filepath.IsAbs(path) {
+		return path, false
+	}
+	if root == "" {
+		return path, false
+	}
+	rel, err := filepath.Rel(root, filepath.FromSlash(path))
+	if err != nil {
+		return "", true
+	}
+	rel = filepath.ToSlash(rel)
+	if rel == ".." || strings.HasPrefix(rel, "../") {
+		return "", true
+	}
+	if rel == "." {
+		return "", false
+	}
+	return rel, false
 }
 
 // Execute runs a query and returns a typed Response.
@@ -137,6 +167,19 @@ func New(reg *registry.Registry) *Engine {
 func (e *Engine) Execute(p Params) (*Response, error) {
 	if !p.hasFilters() {
 		return e.vocabularyResponse()
+	}
+
+	if p.Path != "" {
+		rel, outside := repoRelativePath(p.Path, e.root)
+		if outside {
+			resp, err := e.noMatchResponse(p)
+			if err != nil {
+				return nil, err
+			}
+			resp.Note = "path is outside this repository: " + p.Path
+			return resp, nil
+		}
+		p.Path = rel
 	}
 
 	hasClassicFilters := len(p.Topics) > 0 || len(p.Tags) > 0 || p.Package != ""

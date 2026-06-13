@@ -14,7 +14,7 @@ import (
 )
 
 // Serve starts the MCP server using stdio transport.
-func Serve(reg *registry.Registry, version string) error {
+func Serve(reg *registry.Registry, root, version string) error {
 	s := server.NewMCPServer(
 		"skillex",
 		version,
@@ -59,7 +59,7 @@ func Serve(reg *registry.Registry, version string) error {
 	)
 
 	s.AddTool(queryTool, func(ctx context.Context, req mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
-		return handleQuery(reg, req)
+		return handleQuery(reg, root, req)
 	})
 
 	// Register resources for each skill
@@ -91,7 +91,7 @@ func Serve(reg *registry.Registry, version string) error {
 	return server.ServeStdio(s)
 }
 
-func handleQuery(reg *registry.Registry, req mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
+func handleQuery(reg *registry.Registry, root string, req mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
 	pathVal, _ := req.Params.Arguments["path"].(string)
 	topicVal, _ := req.Params.Arguments["topic"].(string)
 	tagsVal, _ := req.Params.Arguments["tags"].(string)
@@ -123,7 +123,7 @@ func handleQuery(reg *registry.Registry, req mcplib.CallToolRequest) (*mcplib.Ca
 		format = query.FormatDefault
 	}
 
-	eng := query.New(reg)
+	eng := query.New(reg, root)
 	resp, err := eng.Execute(query.Params{
 		Path:    pathVal,
 		Topics:  topics,

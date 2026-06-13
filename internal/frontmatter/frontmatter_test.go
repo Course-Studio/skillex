@@ -1,6 +1,7 @@
 package frontmatter
 
 import (
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -33,6 +34,27 @@ func TestFormatFrontmatter_ReviewedAloneIsKept(t *testing.T) {
 	out := FormatFrontmatter(Frontmatter{Reviewed: "2026-06-12"})
 	if !strings.Contains(out, "reviewed: 2026-06-12") {
 		t.Errorf("reviewed-only frontmatter dropped: %q", out)
+	}
+}
+
+func TestFormatFrontmatter_RoundTripPreservesTopicsAndTagsWithSpecialChars(t *testing.T) {
+	// Topic/tag values can carry YAML flow indicators, either from --topic input
+	// or by re-serializing a source file's own frontmatter. Each must survive a
+	// FormatFrontmatter -> Parse round trip without corrupting or dropping the skill.
+	in := Frontmatter{
+		Topics: []string{"ui", "foo: bar", "a]b", "needs,comma", "#leadinghash"},
+		Tags:   []string{"a11y", "x[y", "key: val"},
+	}
+	out := FormatFrontmatter(in) + "\n"
+	fm2, _, err := Parse([]byte(out))
+	if err != nil {
+		t.Fatalf("reparsing topics/tags with special chars: %v\noutput:\n%s", err, out)
+	}
+	if !reflect.DeepEqual(fm2.Topics, in.Topics) {
+		t.Errorf("topics corrupted in round trip: want %q, got %q\noutput:\n%s", in.Topics, fm2.Topics, out)
+	}
+	if !reflect.DeepEqual(fm2.Tags, in.Tags) {
+		t.Errorf("tags corrupted in round trip: want %q, got %q\noutput:\n%s", in.Tags, fm2.Tags, out)
 	}
 }
 

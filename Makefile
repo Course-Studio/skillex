@@ -24,7 +24,7 @@ build:
 	go build $(GOFLAGS) $(LDFLAGS) -o skillex ./cmd/skillex
 
 install:
-	go install $(LDFLAGS) ./cmd/skillex
+	go install $(GOFLAGS) $(LDFLAGS) ./cmd/skillex
 
 test:
 	go test $$(go list ./... | grep -v '/test/acceptance$$')

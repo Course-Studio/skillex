@@ -88,6 +88,24 @@ func yamlScalar(s string) string {
 	return s
 }
 
+// yamlFlowSeq renders a string slice as a YAML flow sequence so values containing
+// flow indicators ('[', ']', '#', ':', ',') survive a FormatFrontmatter -> Parse
+// round trip instead of corrupting or silently truncating the sequence. A comma
+// separates elements in flow context, so a comma-bearing value must be quoted even
+// though yamlScalar leaves it plain in block context; strconv.Quote also covers any
+// other indicators such a value might hold. Everything else defers to yamlScalar.
+func yamlFlowSeq(items []string) string {
+	quoted := make([]string, len(items))
+	for i, it := range items {
+		if strings.Contains(it, ",") {
+			quoted[i] = strconv.Quote(it)
+		} else {
+			quoted[i] = yamlScalar(it)
+		}
+	}
+	return "[" + strings.Join(quoted, ", ") + "]"
+}
+
 // FormatFrontmatter serializes frontmatter fields into a YAML block.
 func FormatFrontmatter(fm Frontmatter) string {
 	if fm.Name == "" && fm.Description == "" && len(fm.Topics) == 0 &&
@@ -103,10 +121,10 @@ func FormatFrontmatter(fm Frontmatter) string {
 		sb.WriteString("description: " + yamlScalar(fm.Description) + "\n")
 	}
 	if len(fm.Topics) > 0 {
-		sb.WriteString("topics: [" + strings.Join(fm.Topics, ", ") + "]\n")
+		sb.WriteString("topics: " + yamlFlowSeq(fm.Topics) + "\n")
 	}
 	if len(fm.Tags) > 0 {
-		sb.WriteString("tags: [" + strings.Join(fm.Tags, ", ") + "]\n")
+		sb.WriteString("tags: " + yamlFlowSeq(fm.Tags) + "\n")
 	}
 	if fm.Source != "" {
 		sb.WriteString("source: " + yamlScalar(fm.Source) + "\n")

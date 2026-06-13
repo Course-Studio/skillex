@@ -516,8 +516,9 @@ func (r *Registry) AllPackages() ([]PackageSummary, error) {
 		FROM skills
 		WHERE package_name IS NOT NULL
 		GROUP BY package_name, package_ver, visibility
-		ORDER BY package_name
 	`)
+	// No SQL ORDER BY: rows are collected through a map below, which discards row
+	// order, so the deterministic ordering is the sort.Slice on the result slice.
 	if err != nil {
 		return nil, err
 	}

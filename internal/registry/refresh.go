@@ -110,8 +110,12 @@ func Refresh(reg *Registry, cfg *config.Config, opts RefreshOptions) (*RefreshRe
 
 		id, err := reg.InsertSkillTx(tx, dbSkill)
 		if err != nil {
-			result.Errors = append(result.Errors, fmt.Errorf("inserting skill %s: %w", ls.RelPath, err))
-			continue
+			// A write failing inside the rebuild transaction is a DB-integrity
+			// problem, not a bad-input one (unparseable skills are filtered by the
+			// scanner before the transaction and surface as best-effort warnings).
+			// Fail closed: abort so the deferred Rollback restores the previously
+			// committed index instead of committing a half-rebuilt catalog.
+			return nil, fmt.Errorf("inserting skill %s (refresh rolled back, registry unchanged): %w", ls.RelPath, err)
 		}
 		skillIDMap[ls.RelPath] = id
 		result.SkillsAdded++
@@ -144,8 +148,9 @@ func Refresh(reg *Registry, cfg *config.Config, opts RefreshOptions) (*RefreshRe
 					Criteria:    scenario.Criteria,
 				}
 				if err := reg.InsertTestScenarioTx(tx, ts); err != nil {
-					result.Errors = append(result.Errors, fmt.Errorf("inserting test scenario: %w", err))
-					continue
+					// In-transaction integrity failure: fail closed and roll back
+					// rather than commit a partially-rebuilt catalog (see above).
+					return nil, fmt.Errorf("inserting test scenario for %s (refresh rolled back, registry unchanged): %w", skillPath, err)
 				}
 				result.TestsAdded++
 			}

@@ -105,7 +105,7 @@ type Params struct {
 	Tags []string
 	// Package filters skills by package name.
 	Package string
-	// Search performs keyword search across skill name and description.
+	// Search performs keyword search across skill name, description, topics, and tags.
 	// Whitespace/comma-separated tokens are each matched independently (OR).
 	Search string
 	// Format controls output detail for result responses.
@@ -179,6 +179,7 @@ func (e *Engine) Execute(p Params) (*Response, error) {
 		return e.vocabularyResponse()
 	}
 
+	pathIsRoot := false
 	if p.Path != "" {
 		rel, outside := repoRelativePath(p.Path, e.root)
 		if outside {
@@ -189,6 +190,8 @@ func (e *Engine) Execute(p Params) (*Response, error) {
 			resp.Note = "path is outside this repository: " + p.Path
 			return resp, nil
 		}
+		// A provided path that normalizes to "" is the repo root itself → match-all.
+		pathIsRoot = rel == ""
 		p.Path = rel
 	}
 
@@ -238,7 +241,12 @@ func (e *Engine) Execute(p Params) (*Response, error) {
 		}
 	} else if !hasClassicFilters {
 		// Path is the only filter.
-		skills, err = e.reg.QueryByPath(p.Path)
+		if pathIsRoot {
+			// The repo root matches everything → the universally-scoped skills.
+			skills, err = e.reg.UniversalSkills()
+		} else {
+			skills, err = e.reg.QueryByPath(p.Path)
+		}
 		if err != nil {
 			return nil, err
 		}

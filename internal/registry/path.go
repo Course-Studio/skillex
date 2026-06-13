@@ -157,6 +157,16 @@ func (r *Registry) QueryByPath(path string) ([]Skill, error) {
 	)
 }
 
+// UniversalSkills returns skills whose scope matches every path (pattern_type
+// 'universal', i.e. "**"). It is the match-all set for a query scoped to the repo
+// root, where only universal scopes apply (prefix/exact/glob scopes are narrower).
+func (r *Registry) UniversalSkills() ([]Skill, error) {
+	return r.querySkills(
+		`SELECT id, path, content, COALESCE(name,''), COALESCE(description,''), COALESCE(package_name,''), COALESCE(package_ver,''), visibility, source_type
+		 FROM skills WHERE id IN (SELECT DISTINCT skill_id FROM skill_scopes WHERE pattern_type = 'universal') ORDER BY path`,
+	)
+}
+
 // scanIDs drains a single-column int64 result set into ids.
 func scanIDs(rows *sql.Rows, ids map[int64]bool) error {
 	defer rows.Close()

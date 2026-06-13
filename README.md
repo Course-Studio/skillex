@@ -386,7 +386,7 @@ Parameters:
   topic   string    Comma-separated topic filters
   tags    string    Comma-separated tag filters
   package string    Package name filter
-  search  string    Keyword search over skill name and description (space/comma tokens, OR)
+  search  string    Keyword search over skill name, description, topics, and tags (space/comma tokens, OR)
   format  string    "content" or "summary" (default: summary when search is set, else content)
 ```
 

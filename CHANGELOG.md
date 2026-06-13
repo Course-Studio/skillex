@@ -14,7 +14,7 @@ Claude Code agent experience.
 - **Fixed:** `query --path` accepts an absolute path inside the repository (normalized to repo-relative); an absolute path outside the repository returns `no_match` with an explanatory note. Previously absolute paths silently returned only globally-scoped skills.
 - **Fixed:** `search` now matches skill topics and tags in addition to names and descriptions, and escapes `%`/`_` so they are matched literally.
 - **Changed:** `init --harness claude-code` writes a root `.mcp.json` (using `pnpm exec` when a pnpm lockfile/workspace is present, otherwise `npx`) instead of `.claude/mcp.json`, which Claude Code does not read.
-- **Fixed:** MCP skill resources read their content live from the registry, so a mid-session `refresh` is reflected instead of a boot-time snapshot. The `skillex_query` tool description is tuned for agent discovery.
+- **Fixed:** MCP skill resources read their *content* live from the registry, so an edit to an existing skill is reflected mid-session instead of being served from a boot-time snapshot. (The set of advertised resources is still established at startup; a skill added or removed after boot is not yet reflected in the resource list.) The `skillex_query` tool description is tuned for agent discovery.
 
 ## [0.7.0]
 

@@ -85,3 +85,35 @@ func TestExecute_AbsolutePathInsideRepoReturnsScopedSkills(t *testing.T) {
 		t.Errorf("absolute path inside repo must also return the **-scoped skill; got %v", got)
 	}
 }
+
+// TestExecute_RepoRootPathReturnsMatchAll: querying the repo root itself (path-only)
+// must match-all per repoRelativePath's documented contract — i.e. return the
+// universally-scoped skills — not no_match.
+func TestExecute_RepoRootPathReturnsMatchAll(t *testing.T) {
+	reg := newQueryReg(t)
+	if _, err := reg.InsertSkill(registry.Skill{
+		Path: "skills/global.md", Content: "g", Visibility: "repo", SourceType: "repo", Scopes: []string{"**"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.InsertSkill(registry.Skill{
+		Path: "skills/clients.md", Content: "c", Visibility: "repo", SourceType: "repo", Scopes: []string{"clients/**"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	eng := New(reg, "/repo")
+	resp, err := eng.Execute(Params{Path: "/repo"}) // the repo root, no other filters
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Type != ResponseTypeResults {
+		t.Fatalf("repo-root path query must match-all (documented contract), got %s (note: %q)", resp.Type, resp.Note)
+	}
+	got := map[string]bool{}
+	for _, r := range resp.Results {
+		got[r.Path] = true
+	}
+	if !got["skills/global.md"] {
+		t.Errorf("repo-root match-all must include the **-scoped skill; got %v", got)
+	}
+}

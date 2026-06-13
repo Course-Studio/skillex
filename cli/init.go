@@ -289,7 +289,7 @@ func configureMCP(root, harness string) error {
 	case "claude-code":
 		configPath = filepath.Join(root, ".mcp.json")
 		command, args := "npx", `["skillex", "mcp"]`
-		if fileExistsCLI(filepath.Join(root, "pnpm-lock.yaml")) || fileExistsCLI(filepath.Join(root, "pnpm-workspace.yaml")) {
+		if fileExists(filepath.Join(root, "pnpm-lock.yaml")) || fileExists(filepath.Join(root, "pnpm-workspace.yaml")) {
 			command, args = "pnpm", `["exec", "skillex", "mcp"]`
 		}
 		mcpConfig = fmt.Sprintf(`{
@@ -334,9 +334,8 @@ func configureMCP(root, harness string) error {
 	return os.WriteFile(configPath, []byte(mcpConfig), 0o644)
 }
 
-// fileExistsCLI reports whether the file at path exists.
-// Named to avoid collision with identically-named helpers in other packages.
-func fileExistsCLI(path string) bool {
+// fileExists reports whether the file at path exists.
+func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
 }

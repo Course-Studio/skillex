@@ -1,7 +1,8 @@
 BASE_VERSION := $(shell cat VERSION)
 VERSION ?= $(BASE_VERSION)-dev
 PACKAGE_VERSION ?= $(BASE_VERSION)
-LDFLAGS := -ldflags "-X github.com/course-studio/skillex/cli.Version=$(VERSION)"
+LDFLAGS := -ldflags "-s -w -X github.com/course-studio/skillex/cli.Version=$(VERSION)"
+GOFLAGS := -trimpath
 
 .PHONY: build install test lint clean dist npm-stage npm-pack npm-publish refresh doctor version-sync verify release-tag
 
@@ -20,7 +21,7 @@ verify:
 	$(MAKE) build
 
 build:
-	go build $(LDFLAGS) -o skillex ./cmd/skillex
+	go build $(GOFLAGS) $(LDFLAGS) -o skillex ./cmd/skillex
 
 install:
 	go install $(LDFLAGS) ./cmd/skillex
@@ -42,11 +43,11 @@ clean:
 
 # Build all platform binaries into dist/
 dist: clean
-	GOOS=darwin  GOARCH=amd64 go build $(LDFLAGS) -o dist/skillex-darwin-x64      ./cmd/skillex
-	GOOS=darwin  GOARCH=arm64 go build $(LDFLAGS) -o dist/skillex-darwin-arm64    ./cmd/skillex
-	GOOS=linux   GOARCH=amd64 go build $(LDFLAGS) -o dist/skillex-linux-x64       ./cmd/skillex
-	GOOS=linux   GOARCH=arm64 go build $(LDFLAGS) -o dist/skillex-linux-arm64     ./cmd/skillex
-	GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o dist/skillex-win32-x64.exe   ./cmd/skillex
+	CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build $(GOFLAGS) $(LDFLAGS) -o dist/skillex-darwin-x64      ./cmd/skillex
+	CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build $(GOFLAGS) $(LDFLAGS) -o dist/skillex-darwin-arm64    ./cmd/skillex
+	CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build $(GOFLAGS) $(LDFLAGS) -o dist/skillex-linux-x64       ./cmd/skillex
+	CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build $(GOFLAGS) $(LDFLAGS) -o dist/skillex-linux-arm64     ./cmd/skillex
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(GOFLAGS) $(LDFLAGS) -o dist/skillex-win32-x64.exe   ./cmd/skillex
 
 # ── npm packaging ────────────────────────────────────────────────────────────
 

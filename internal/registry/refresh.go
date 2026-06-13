@@ -76,8 +76,14 @@ func Refresh(reg *Registry, cfg *config.Config, opts RefreshOptions) (*RefreshRe
 		return result, nil
 	}
 
-	// 3. Clear and rebuild
-	if err := reg.Clear(); err != nil {
+	// 3. Begin transaction, clear, and rebuild atomically
+	tx, err := reg.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("starting refresh transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op after a successful Commit
+
+	if err := reg.ClearTx(tx); err != nil {
 		return nil, fmt.Errorf("clearing registry: %w", err)
 	}
 
@@ -102,7 +108,7 @@ func Refresh(reg *Registry, cfg *config.Config, opts RefreshOptions) (*RefreshRe
 			Scopes:         ls.Scopes,
 		}
 
-		id, err := reg.InsertSkill(dbSkill)
+		id, err := reg.InsertSkillTx(tx, dbSkill)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("inserting skill %s: %w", ls.RelPath, err))
 			continue
@@ -137,13 +143,17 @@ func Refresh(reg *Registry, cfg *config.Config, opts RefreshOptions) (*RefreshRe
 					ExtraSkills: scenario.ExtraSkills,
 					Criteria:    scenario.Criteria,
 				}
-				if err := reg.InsertTestScenario(ts); err != nil {
+				if err := reg.InsertTestScenarioTx(tx, ts); err != nil {
 					result.Errors = append(result.Errors, fmt.Errorf("inserting test scenario: %w", err))
 					continue
 				}
 				result.TestsAdded++
 			}
 		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("committing refresh: %w", err)
 	}
 
 	return result, nil

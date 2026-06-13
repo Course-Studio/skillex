@@ -58,10 +58,21 @@ CREATE INDEX IF NOT EXISTS idx_skill_scopes ON skill_scopes(scope);
 CREATE INDEX IF NOT EXISTS idx_skill_tests ON skill_tests(skill_id);
 `
 
+// execer abstracts *sql.DB and *sql.Tx for write operations.
+type execer interface {
+	Exec(query string, args ...any) (sql.Result, error)
+	QueryRow(query string, args ...any) *sql.Row
+}
+
 // Registry wraps a SQLite database for skill storage and retrieval.
 type Registry struct {
 	db   *sql.DB
 	path string
+}
+
+// Begin starts a write transaction on the registry database.
+func (r *Registry) Begin() (*sql.Tx, error) {
+	return r.db.Begin()
 }
 
 // Skill is a registry entry.
@@ -136,8 +147,27 @@ func (r *Registry) Path() string {
 }
 
 // Clear removes all data from the registry (for a full rebuild).
-func (r *Registry) Clear() error {
-	_, err := r.db.Exec(`
+func (r *Registry) Clear() error { return clearAll(r.db) }
+
+// ClearTx removes all data from the registry within a transaction.
+func (r *Registry) ClearTx(tx *sql.Tx) error { return clearAll(tx) }
+
+// InsertSkill inserts a skill into the registry.
+func (r *Registry) InsertSkill(s Skill) (int64, error) { return insertSkill(r.db, s) }
+
+// InsertSkillTx inserts a skill into the registry within a transaction.
+func (r *Registry) InsertSkillTx(tx *sql.Tx, s Skill) (int64, error) { return insertSkill(tx, s) }
+
+// InsertTestScenario inserts a test scenario linked to a skill.
+func (r *Registry) InsertTestScenario(t TestScenario) error { return insertTestScenario(r.db, t) }
+
+// InsertTestScenarioTx inserts a test scenario linked to a skill within a transaction.
+func (r *Registry) InsertTestScenarioTx(tx *sql.Tx, t TestScenario) error {
+	return insertTestScenario(tx, t)
+}
+
+func clearAll(e execer) error {
+	_, err := e.Exec(`
 		DELETE FROM skill_tests;
 		DELETE FROM skill_scopes;
 		DELETE FROM skill_tags;
@@ -147,11 +177,10 @@ func (r *Registry) Clear() error {
 	return err
 }
 
-// InsertSkill inserts a skill into the registry.
-func (r *Registry) InsertSkill(s Skill) (int64, error) {
+func insertSkill(e execer, s Skill) (int64, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	var id int64
-	err := r.db.QueryRow(
+	err := e.QueryRow(
 		`INSERT INTO skills (path, content, name, description, package_name, package_ver, visibility, source_type, indexed_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(path) DO UPDATE SET
@@ -173,29 +202,29 @@ func (r *Registry) InsertSkill(s Skill) (int64, error) {
 	}
 
 	// Delete and re-insert topics, tags, scopes
-	if _, err := r.db.Exec(`DELETE FROM skill_topics WHERE skill_id = ?`, id); err != nil {
+	if _, err := e.Exec(`DELETE FROM skill_topics WHERE skill_id = ?`, id); err != nil {
 		return 0, err
 	}
-	if _, err := r.db.Exec(`DELETE FROM skill_tags WHERE skill_id = ?`, id); err != nil {
+	if _, err := e.Exec(`DELETE FROM skill_tags WHERE skill_id = ?`, id); err != nil {
 		return 0, err
 	}
-	if _, err := r.db.Exec(`DELETE FROM skill_scopes WHERE skill_id = ?`, id); err != nil {
+	if _, err := e.Exec(`DELETE FROM skill_scopes WHERE skill_id = ?`, id); err != nil {
 		return 0, err
 	}
 
 	for _, topic := range s.Topics {
-		if _, err := r.db.Exec(`INSERT INTO skill_topics (skill_id, topic) VALUES (?, ?)`, id, topic); err != nil {
+		if _, err := e.Exec(`INSERT INTO skill_topics (skill_id, topic) VALUES (?, ?)`, id, topic); err != nil {
 			return 0, err
 		}
 	}
 	for _, tag := range s.Tags {
-		if _, err := r.db.Exec(`INSERT INTO skill_tags (skill_id, tag) VALUES (?, ?)`, id, tag); err != nil {
+		if _, err := e.Exec(`INSERT INTO skill_tags (skill_id, tag) VALUES (?, ?)`, id, tag); err != nil {
 			return 0, err
 		}
 	}
 	for _, scope := range s.Scopes {
 		pt, pp := classifyScope(scope)
-		if _, err := r.db.Exec(
+		if _, err := e.Exec(
 			`INSERT INTO skill_scopes (skill_id, scope, path_prefix, pattern_type) VALUES (?, ?, ?, ?)`,
 			id, scope, pp, pt,
 		); err != nil {
@@ -206,9 +235,8 @@ func (r *Registry) InsertSkill(s Skill) (int64, error) {
 	return id, nil
 }
 
-// InsertTestScenario inserts a test scenario linked to a skill.
-func (r *Registry) InsertTestScenario(t TestScenario) error {
-	_, err := r.db.Exec(
+func insertTestScenario(e execer, t TestScenario) error {
+	_, err := e.Exec(
 		`INSERT INTO skill_tests (skill_id, name, prompt, extra_skills, criteria) VALUES (?, ?, ?, ?, ?)`,
 		t.SkillID, t.Name, t.Prompt,
 		nullStr(strings.Join(t.ExtraSkills, ",")),

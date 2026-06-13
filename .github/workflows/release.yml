@@ -134,6 +134,7 @@ jobs:
       - name: Publish platform packages
         env:
           VERSION: ${{ needs.verify_release.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           tar_dir="$(realpath "${{ steps.download_tarballs.outputs.download-path }}")"
           for tarball in \
@@ -152,6 +153,7 @@ jobs:
       - name: Publish wrapper package
         env:
           VERSION: ${{ needs.verify_release.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           tar_dir="$(realpath "${{ steps.download_tarballs.outputs.download-path }}")"
           tarball="$tar_dir/course-studio-skillex-by-jeremy-${VERSION}.tgz"

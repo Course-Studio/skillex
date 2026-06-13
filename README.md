@@ -82,7 +82,7 @@ That is the core difference: Skillex moves scope resolution out of the model's p
 - **Version-correct** — skills are read from the resolved package install, not from the internet.
 - **Scope-aware** — skills are linked to the paths where they apply. A query for `packages/app-a/**` never returns skills for `packages/app-b`.
 - **Public and private** — packages export consumer-facing skills (public) and contributor-facing skills (private). Visibility is enforced automatically.
-- **Instant retrieval** — SQLite index with structured queries plus keyword search over skill `name` and `description`. No document browsing, no embeddings.
+- **Instant retrieval** — SQLite index with structured queries plus keyword search over skill `name`, `description`, topics, and tags. No document browsing, no embeddings.
 - **MCP native** — first-class Model Context Protocol server. Agents with MCP support get typed tool calls and resource discovery.
 - **CLI fallback** — every agent harness can call the CLI. Works in CI, scripts, and terminals.
 - **AGENTS.md manifest** — auto-generated fallback for agents that can't run MCP or shell commands.

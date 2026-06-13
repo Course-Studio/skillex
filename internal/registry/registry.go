@@ -146,9 +146,6 @@ func (r *Registry) Path() string {
 	return r.path
 }
 
-// Clear removes all data from the registry (for a full rebuild).
-func (r *Registry) Clear() error { return clearAll(r.db) }
-
 // ClearTx removes all data from the registry within a transaction.
 func (r *Registry) ClearTx(tx *sql.Tx) error { return clearAll(tx) }
 
@@ -157,9 +154,6 @@ func (r *Registry) InsertSkill(s Skill) (int64, error) { return insertSkill(r.db
 
 // InsertSkillTx inserts a skill into the registry within a transaction.
 func (r *Registry) InsertSkillTx(tx *sql.Tx, s Skill) (int64, error) { return insertSkill(tx, s) }
-
-// InsertTestScenario inserts a test scenario linked to a skill.
-func (r *Registry) InsertTestScenario(t TestScenario) error { return insertTestScenario(r.db, t) }
 
 // InsertTestScenarioTx inserts a test scenario linked to a skill within a transaction.
 func (r *Registry) InsertTestScenarioTx(tx *sql.Tx, t TestScenario) error {

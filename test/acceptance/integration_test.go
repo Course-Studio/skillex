@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Course-Studio/skillex/test/helpers"
+	"github.com/course-studio/skillex/test/helpers"
 )
 
 func TestIntegration_FullLifecycle(t *testing.T) {

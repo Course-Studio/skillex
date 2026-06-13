@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Course-Studio/skillex/internal/frontmatter"
+	"github.com/course-studio/skillex/internal/frontmatter"
 )
 
 func newImportCmd() *cobra.Command {

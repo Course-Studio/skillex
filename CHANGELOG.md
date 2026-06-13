@@ -10,7 +10,7 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
 
 First Course Studio fork release (fork of atheory-ai/skillex at v0.6.4).
 
-- **Fork identity:** packages renamed to `@course-studio/skillex-by-jeremy` (+ platform packages); Go module moved to `github.com/Course-Studio/skillex`; CLI command unchanged (`skillex`).
+- **Fork identity:** packages renamed to `@course-studio/skillex-by-jeremy` (+ platform packages); Go module moved to `github.com/course-studio/skillex`; CLI command unchanged (`skillex`).
 
 ## [0.6.1]
 

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Course-Studio/skillex/test/helpers"
+	"github.com/course-studio/skillex/test/helpers"
 )
 
 func TestCLI_StdoutStderrSeparation(t *testing.T) {

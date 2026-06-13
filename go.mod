@@ -1,4 +1,4 @@
-module github.com/Course-Studio/skillex
+module github.com/course-studio/skillex
 
 go 1.23
 

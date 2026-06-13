@@ -72,5 +72,5 @@ Without scoped skill retrieval, agents either get too little context or far too 
 
 ## Repository
 
-- Source: https://github.com/Course-Studio/skillex
-- Documentation: https://github.com/Course-Studio/skillex/blob/main/README.md
+- Source: https://github.com/course-studio/skillex
+- Documentation: https://github.com/course-studio/skillex/blob/main/README.md

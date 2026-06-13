@@ -1,7 +1,7 @@
 package acceptance
 
 // Golden test suite for the scoped vocabulary hint behaviour introduced in
-// https://github.com/Course-Studio/skillex/issues/10
+// https://github.com/course-studio/skillex/issues/10
 //
 // These tests assert the precise shape of every response type (results,
 // vocabulary, no_match) across all filter dimensions and their combinations.
@@ -34,7 +34,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Course-Studio/skillex/test/helpers"
+	"github.com/course-studio/skillex/test/helpers"
 )
 
 // ---- Response type assertions -----------------------------------------------

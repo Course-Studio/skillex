@@ -9,9 +9,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 
-	"github.com/Course-Studio/skillex/internal/agents"
-	"github.com/Course-Studio/skillex/internal/config"
-	"github.com/Course-Studio/skillex/internal/registry"
+	"github.com/course-studio/skillex/internal/agents"
+	"github.com/course-studio/skillex/internal/config"
+	"github.com/course-studio/skillex/internal/registry"
 )
 
 func newRefreshCmd() *cobra.Command {

@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Course-Studio/skillex/internal/registry"
+	"github.com/course-studio/skillex/internal/registry"
 	"github.com/gobwas/glob"
 )
 

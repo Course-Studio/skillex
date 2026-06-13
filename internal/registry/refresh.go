@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Course-Studio/skillex/internal/config"
-	"github.com/Course-Studio/skillex/internal/linker"
-	"github.com/Course-Studio/skillex/internal/scanner"
-	"github.com/Course-Studio/skillex/internal/validator"
+	"github.com/course-studio/skillex/internal/config"
+	"github.com/course-studio/skillex/internal/linker"
+	"github.com/course-studio/skillex/internal/scanner"
+	"github.com/course-studio/skillex/internal/validator"
 )
 
 // RefreshOptions controls the refresh behavior.

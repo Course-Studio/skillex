@@ -28,7 +28,7 @@ function getBinaryPath() {
     throw new Error(
       `skillex: unsupported platform "${key}"\n` +
       `Supported platforms: ${Object.keys(PLATFORM_PACKAGES).join(", ")}\n` +
-      `\nPlease open an issue at https://github.com/Course-Studio/skillex/issues`
+      `\nPlease open an issue at https://github.com/course-studio/skillex/issues`
     );
   }
 

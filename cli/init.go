@@ -125,7 +125,7 @@ func initRepo(root string, yes bool, harness string, useYAML bool) error {
 		return err
 	}
 
-	section, err := agents.GenerateSection(reg)
+	section, err := agents.GenerateSectionWithCutoff(reg, cfg.CatalogCutoff)
 	if err != nil {
 		return err
 	}

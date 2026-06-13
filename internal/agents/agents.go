@@ -14,10 +14,11 @@ const (
 	markerEnd   = "<!-- skillex:end -->"
 )
 
-// catalogCutoff is the maximum number of skills for which GenerateSection
+// DefaultCatalogCutoff is the maximum number of skills for which GenerateSection
 // emits a per-skill catalog. Above it, only the taxonomy vocabulary is shown
 // to keep the always-in-context AGENTS.md section bounded.
-const catalogCutoff = 40
+// This default applies when no CatalogCutoff is set in skillex.json/yaml (i.e. 0).
+const DefaultCatalogCutoff = 40
 
 // truncateDescription shortens s to at most 140 characters, adding an ellipsis.
 // It counts runes (not bytes) so multibyte UTF-8 sequences are never split.
@@ -30,8 +31,20 @@ func truncateDescription(s string) string {
 	return string(runes[:max-3]) + "..."
 }
 
-// GenerateSection creates the AGENTS.md section content from registry data.
+// GenerateSection creates the AGENTS.md section content from registry data,
+// using the DefaultCatalogCutoff for the catalog threshold.
 func GenerateSection(reg *registry.Registry) (string, error) {
+	return GenerateSectionWithCutoff(reg, DefaultCatalogCutoff)
+}
+
+// GenerateSectionWithCutoff creates the AGENTS.md section content from registry data.
+// cutoff controls how many skills trigger a full per-skill catalog; if cutoff <= 0 it
+// resolves to DefaultCatalogCutoff. Above the cutoff only the vocabulary is shown.
+func GenerateSectionWithCutoff(reg *registry.Registry, cutoff int) (string, error) {
+	if cutoff <= 0 {
+		cutoff = DefaultCatalogCutoff
+	}
+
 	topics, err := reg.AllTopics()
 	if err != nil {
 		return "", fmt.Errorf("fetching topics: %w", err)
@@ -81,7 +94,7 @@ func GenerateSection(reg *registry.Registry) (string, error) {
 	sb.WriteString("  skillex query --path <glob> --topic <topic> --format content\n")
 	sb.WriteString("```\n\n")
 
-	if len(skills) > 0 && len(skills) <= catalogCutoff {
+	if len(skills) > 0 && len(skills) <= cutoff {
 		sb.WriteString("### Skills\n\n")
 		sb.WriteString("The skills available in this repository, grouped by the path scope that loads them:\n\n")
 		for _, scope := range scopes {

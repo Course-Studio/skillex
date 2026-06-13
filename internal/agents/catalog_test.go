@@ -120,7 +120,7 @@ func TestGenerateSection_TruncatesMultibyteDescriptionSafely(t *testing.T) {
 
 func TestGenerateSection_FallsBackToVocabularyAboveCutoff(t *testing.T) {
 	reg := newReg(t)
-	for i := 0; i < catalogCutoff+1; i++ {
+	for i := 0; i < DefaultCatalogCutoff+1; i++ {
 		if _, err := reg.InsertSkill(registry.Skill{
 			Path:    "skills/s-" + itoa(i) + ".md",
 			Content: "x", Visibility: "repo", SourceType: "repo",
@@ -135,10 +135,98 @@ func TestGenerateSection_FallsBackToVocabularyAboveCutoff(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.Contains(out, "### Skills") {
-		t.Errorf("above cutoff (%d) the catalog must be omitted", catalogCutoff)
+		t.Errorf("above cutoff (%d) the catalog must be omitted", DefaultCatalogCutoff)
 	}
 	if !strings.Contains(out, "### Available topics") {
 		t.Error("vocabulary view must remain above cutoff")
+	}
+}
+
+// helper: insert n skills with a topic into the registry.
+func insertNSkills(t *testing.T, reg *registry.Registry, n int) {
+	t.Helper()
+	for i := 0; i < n; i++ {
+		if _, err := reg.InsertSkill(registry.Skill{
+			Path:    "skills/s-" + itoa(i) + ".md",
+			Content: "x", Visibility: "repo", SourceType: "repo",
+			Name: "N", Description: "D", Scopes: []string{"**"},
+			Topics: []string{"common"},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestGenerateSectionWithCutoff_BoundaryAtCutoff(t *testing.T) {
+	// len(skills) == cutoff -> catalog SHOWN (check is <=)
+	reg := newReg(t)
+	insertNSkills(t, reg, 3)
+
+	out, err := GenerateSectionWithCutoff(reg, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "### Skills") {
+		t.Error("expected catalog to be shown when len(skills)==cutoff (boundary inclusive)")
+	}
+}
+
+func TestGenerateSectionWithCutoff_AboveCutoff(t *testing.T) {
+	// len(skills) == cutoff+1 -> catalog SUPPRESSED
+	reg := newReg(t)
+	insertNSkills(t, reg, 3)
+
+	out, err := GenerateSectionWithCutoff(reg, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "### Skills") {
+		t.Error("expected catalog to be absent when len(skills) > cutoff")
+	}
+	if !strings.Contains(out, "### Available") {
+		t.Error("vocabulary must be present above cutoff")
+	}
+}
+
+func TestGenerateSectionWithCutoff_ZeroResolvesToDefault(t *testing.T) {
+	// cutoff=0 -> resolves to DefaultCatalogCutoff; a small registry should show catalog
+	reg := newReg(t)
+	insertNSkills(t, reg, 3)
+
+	out, err := GenerateSectionWithCutoff(reg, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "### Skills") {
+		t.Errorf("cutoff=0 should resolve to DefaultCatalogCutoff (%d); 3 skills should show catalog", DefaultCatalogCutoff)
+	}
+}
+
+func TestGenerateSectionWithCutoff_NegativeResolvesToDefault(t *testing.T) {
+	// cutoff=-1 -> resolves to DefaultCatalogCutoff; no panic; small registry shows catalog
+	reg := newReg(t)
+	insertNSkills(t, reg, 3)
+
+	out, err := GenerateSectionWithCutoff(reg, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "### Skills") {
+		t.Errorf("cutoff=-1 should resolve to DefaultCatalogCutoff (%d); 3 skills should show catalog", DefaultCatalogCutoff)
+	}
+}
+
+func TestGenerateSectionWithCutoff_CutoffOne(t *testing.T) {
+	// cutoff=1 with 1 skill -> catalog shown (==cutoff, boundary inclusive)
+	reg := newReg(t)
+	insertNSkills(t, reg, 1)
+
+	out, err := GenerateSectionWithCutoff(reg, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "### Skills") {
+		t.Error("cutoff=1 with 1 skill: catalog should be shown")
 	}
 }
 

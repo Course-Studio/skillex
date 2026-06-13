@@ -77,6 +77,11 @@ func (s *Scanner) Scan() (*ScanResult, error) {
 	for _, rule := range s.cfg.Rules {
 		for _, skillPath := range rule.Skills {
 			abs := filepath.Join(s.root, skillPath)
+			if _, statErr := os.Stat(abs); os.IsNotExist(statErr) {
+				result.Errors = append(result.Errors,
+					fmt.Errorf("rule %q lists %s, but the file does not exist on disk", rule.Scope, skillPath))
+				continue
+			}
 			sf, err := s.readSkillFile(abs, skillPath, "", "", "repo", "repo", "", "")
 			if err != nil {
 				result.Errors = append(result.Errors, fmt.Errorf("repo skill %s: %w", skillPath, err))

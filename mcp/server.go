@@ -26,11 +26,11 @@ func Serve(reg *registry.Registry, root, version string) error {
 	queryTool := mcplib.NewTool(
 		"skillex_query",
 		mcplib.WithDescription(
-			"Query skillex skills by path, topic, tags, package, or keyword search. "+
-				"Use 'search' for intent-based discovery when you don't know the skill taxonomy — "+
-				"pass space or comma-separated concepts and all matching skills are returned in one call. "+
-				"Use topic/tags for structured filtering when you know the organization. "+
-				"Returns skill content or metadata for agent consumption.",
+			"Look up repository skills, conventions, and documentation for this codebase. "+
+				"Query skillex skills by path, topic, tags, package, or keyword search. "+
+				"Use 'search' for intent-based discovery across skill names, descriptions, topics, and tags. "+
+				"Use 'path' (repo-relative or absolute inside the repo) to get the skills that apply to a file. "+
+				"A query with no parameters returns the available vocabulary.",
 		),
 		mcplib.WithString("path",
 			mcplib.Description("File path or glob pattern to scope the query"),
@@ -77,18 +77,40 @@ func Serve(reg *registry.Registry, root, version string) error {
 			mcplib.WithResourceDescription(skillDescription(sk)),
 			mcplib.WithMIMEType("text/markdown"),
 		)
+		read := resourceContentFunc(reg, sk.Path)
 		s.AddResource(resource, func(ctx context.Context, req mcplib.ReadResourceRequest) ([]mcplib.ResourceContents, error) {
+			content, err := read()
+			if err != nil {
+				return nil, err
+			}
 			return []mcplib.ResourceContents{
 				mcplib.TextResourceContents{
 					URI:      uri,
 					MIMEType: "text/markdown",
-					Text:     sk.Content,
+					Text:     content,
 				},
 			}, nil
 		})
 	}
 
 	return server.ServeStdio(s)
+}
+
+// resourceContentFunc returns a closure that reads the current content of the
+// skill at path from the registry on each call, so a mid-session refresh is
+// reflected instead of a boot-time snapshot. A skill removed since boot yields
+// an empty string rather than an error.
+func resourceContentFunc(reg *registry.Registry, path string) func() (string, error) {
+	return func() (string, error) {
+		sk, err := reg.GetSkillByPath(path)
+		if err != nil {
+			return "", err
+		}
+		if sk == nil {
+			return "", nil
+		}
+		return sk.Content, nil
+	}
 }
 
 func handleQuery(reg *registry.Registry, root string, req mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {

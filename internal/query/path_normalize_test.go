@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Course-Studio/skillex/internal/registry"
+	"github.com/course-studio/skillex/internal/registry"
 )
 
 func newQueryReg(t *testing.T) *registry.Registry {

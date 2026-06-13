@@ -6,7 +6,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/Course-Studio/skillex/internal/registry"
+	"github.com/course-studio/skillex/internal/registry"
 )
 
 func newReg(t *testing.T) *registry.Registry {

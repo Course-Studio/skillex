@@ -3,8 +3,8 @@ package linker
 import (
 	"testing"
 
-	"github.com/Course-Studio/skillex/internal/config"
-	"github.com/Course-Studio/skillex/internal/scanner"
+	"github.com/course-studio/skillex/internal/config"
+	"github.com/course-studio/skillex/internal/scanner"
 )
 
 func TestLink_DeduplicatesRepoSkillsListedInSeveralRules(t *testing.T) {

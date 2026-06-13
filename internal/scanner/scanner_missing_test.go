@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Course-Studio/skillex/internal/config"
+	"github.com/course-studio/skillex/internal/config"
 )
 
 func TestScan_WarnsWhenConfigListsMissingSkill(t *testing.T) {

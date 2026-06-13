@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
 
 ## [Unreleased]
 
+## [0.8.0]
+
+Claude Code agent experience.
+
+- **Added:** the generated AGENTS.md section now lists each skill (path, name, truncated description) grouped by scope, up to a configurable cutoff (default 40, set `CatalogCutoff` in skillex.json) above which it falls back to the taxonomy view. Combined with the upstream CLAUDE.md/GEMINI.md bridge, agents see the skill catalog passively.
+- **Fixed:** `query --path` accepts an absolute path inside the repository (normalized to repo-relative); an absolute path outside the repository returns `no_match` with an explanatory note. Previously absolute paths silently returned only globally-scoped skills.
+- **Fixed:** `search` now matches skill topics and tags in addition to names and descriptions, and escapes `%`/`_` so they are matched literally.
+- **Changed:** `init --harness claude-code` writes a root `.mcp.json` (using `pnpm exec` when a pnpm lockfile/workspace is present, otherwise `npx`) instead of `.claude/mcp.json`, which Claude Code does not read.
+- **Fixed:** MCP skill resources read their content live from the registry, so a mid-session `refresh` is reflected instead of a boot-time snapshot. The `skillex_query` tool description is tuned for agent discovery.
+
 ## [0.7.0]
 
 First Course Studio fork release (fork of atheory-ai/skillex at v0.6.4).

@@ -38,17 +38,41 @@ func (l *Linker) Link(result *scanner.ScanResult) []LinkedSkill {
 	// listed in several rules (that is how multi-scope assignment works) and
 	// the scanner reads it once per rule. Scopes are already merged across
 	// rules in repoSkillScopes.
-	seenRepo := map[string]bool{}
+	//
+	// Pack skills carry their scopes on the SkillFile (ExplicitScopes) rather
+	// than via config Rules, and a pack may list the same file in several
+	// manifest entries with DIFFERENT scopes. Those duplicates must be merged
+	// into the UNION of their scopes (keep-first would silently drop the later
+	// entries' scopes), mirroring resolveDepSkillScopes for dependency packs.
+	seenRepo := map[string]int{} // RelPath -> index into linked (non-test only)
 	for _, sf := range result.RepoSkills {
 		if sf.IsTest {
-			// Tests are linked via skill_tests, not as regular scoped skills
+			// Tests are linked via skill_tests, not as regular scoped skills.
+			// Dedup by RelPath so a pack test listed under several manifest
+			// entries is not inserted multiple times downstream.
+			if _, ok := seenRepo[sf.RelPath]; ok {
+				continue
+			}
+			seenRepo[sf.RelPath] = len(linked)
 			linked = append(linked, LinkedSkill{SkillFile: sf, Scopes: []string{}})
 			continue
 		}
-		if seenRepo[sf.RelPath] {
+		if idx, ok := seenRepo[sf.RelPath]; ok {
+			// Already emitted. For pack skills, merge this duplicate's explicit
+			// scopes into the existing LinkedSkill rather than discarding them.
+			if len(sf.ExplicitScopes) > 0 {
+				linked[idx].Scopes = appendUnique(linked[idx].Scopes, sf.ExplicitScopes...)
+			}
 			continue
 		}
-		seenRepo[sf.RelPath] = true
+		seenRepo[sf.RelPath] = len(linked)
+		if len(sf.ExplicitScopes) > 0 {
+			linked = append(linked, LinkedSkill{
+				SkillFile: sf,
+				Scopes:    append([]string(nil), sf.ExplicitScopes...),
+			})
+			continue
+		}
 		scopes := repoSkillScopes[sf.RelPath]
 		linked = append(linked, LinkedSkill{SkillFile: sf, Scopes: scopes})
 	}
@@ -131,11 +155,19 @@ func (l *Linker) resolveDepSkillScopes(skills []scanner.SkillFile) map[string][]
 
 		switch sf.Visibility {
 		case "public":
+			if len(sf.ExplicitScopes) > 0 {
+				result[sf.RelPath] = appendUnique(result[sf.RelPath], sf.ExplicitScopes...)
+				continue
+			}
 			if sf.DependencyBoundary == "" {
 				continue
 			}
 			result[sf.RelPath] = appendUnique(result[sf.RelPath], boundaryScopes[sf.DependencyBoundary]...)
 		case "private":
+			if len(sf.ExplicitScopes) > 0 {
+				result[sf.RelPath] = appendUnique(result[sf.RelPath], sf.ExplicitScopes...)
+				continue
+			}
 			if sf.PackageRoot == "" {
 				continue
 			}

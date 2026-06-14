@@ -2,7 +2,10 @@ package scanner
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+
+	"github.com/course-studio/skillex/internal/packs"
 )
 
 // NodeResolver resolves npm-package dependencies from package.json boundaries.
@@ -103,10 +106,55 @@ func (r *NodeResolver) Exports(pkg PackageRoot) ([]SkillExport, []error) {
 		return nil, nil
 	}
 
-	return []SkillExport{
+	exports := []SkillExport{
 		{
 			Path:   filepath.Join(pkg.RootAbs, export.Path),
 			Format: SkillExportFormatLegacyDir,
 		},
-	}, nil
+	}
+
+	packPath := export.PackPath
+	if packPath == "" {
+		packPath = filepath.Join(export.Path, packs.Filename)
+	}
+	// export.PackPath is taken verbatim from a dependency's package.json and is
+	// therefore untrusted. Reject absolute paths and ".." escapes before joining,
+	// and verify the joined path does not climb out of the package root.
+	if packManifestPath, ok := safeJoinUnderRoot(pkg.RootAbs, packPath); ok {
+		if info, err := os.Stat(packManifestPath); err == nil && !info.IsDir() {
+			exports = append(exports, SkillExport{
+				Path:   packManifestPath,
+				Format: SkillExportFormatPackManifest,
+			})
+		}
+	}
+
+	return exports, nil
+}
+
+// safeJoinUnderRoot joins rel under root and returns the result only if rel is a
+// safe relative path and the join stays within root even after symlinks are
+// resolved. Used to contain untrusted package.json-provided paths (e.g.
+// skillex.pack) within the package root.
+//
+// A purely lexical check is insufficient: a malicious dependency can ship a
+// symlinked intermediate directory (e.g. linkdir -> /etc) and set
+// skillex.pack to "linkdir/pack.yaml". The lexical guard below passes, but the
+// symlink-aware containment delegated to packs.SafeSkillPath (which resolves the
+// deepest existing ancestor via filepath.EvalSymlinks and re-confines it under
+// root) rejects any path whose real location escapes root.
+func safeJoinUnderRoot(root, rel string) (string, bool) {
+	// Cheap lexical guard first: reject absolute paths and ".." escapes outright
+	// (defense in depth + clearer rejection before touching the filesystem).
+	if !packs.IsSafeRelativePath(rel) {
+		return "", false
+	}
+	// Symlink-aware containment: mirrors SafeSkillPath/withinDir so an
+	// intermediate-component symlink whose resolved target escapes root is
+	// rejected. SafeSkillPath returns the plain (unresolved) join on success.
+	joined, err := packs.SafeSkillPath(root, rel)
+	if err != nil {
+		return "", false
+	}
+	return joined, true
 }

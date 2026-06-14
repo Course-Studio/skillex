@@ -127,6 +127,152 @@ func TestNodeResolverExportsSkillexTrueAndCustomPath(t *testing.T) {
 	}
 }
 
+func TestNodeResolverExportsPackManifestWhenPresent(t *testing.T) {
+	root := t.TempDir()
+	resolver := NewNodeResolver()
+
+	pkgRoot := filepath.Join(root, "node_modules", "with-pack")
+	writeFile(t, filepath.Join(pkgRoot, "package.json"), `{
+		"name": "with-pack",
+		"version": "1.0.0",
+		"skillex": true
+	}`)
+	writeFile(t, filepath.Join(pkgRoot, "skillex", "pack.yaml"), `name: with-pack
+skills:
+  - file: usage.md
+    activate-when:
+      dependency-declared:
+        - source: npm-package
+          name: with-pack
+    scope: boundary
+`)
+
+	exports, errs := resolver.Exports(PackageRoot{RootAbs: pkgRoot})
+	if len(errs) > 0 {
+		t.Fatalf("Exports() errs=%v", errs)
+	}
+	if len(exports) != 2 {
+		t.Fatalf("exports = %#v, want legacy dir and pack manifest", exports)
+	}
+	if exports[0].Format != SkillExportFormatLegacyDir {
+		t.Fatalf("first export format = %q, want legacy", exports[0].Format)
+	}
+	if exports[1].Format != SkillExportFormatPackManifest {
+		t.Fatalf("second export format = %q, want pack manifest", exports[1].Format)
+	}
+	if exports[1].Path != filepath.Join(pkgRoot, "skillex", "pack.yaml") {
+		t.Fatalf("pack manifest path = %q", exports[1].Path)
+	}
+}
+
+func TestNodeResolverExportsExplicitPackManifestPath(t *testing.T) {
+	root := t.TempDir()
+	resolver := NewNodeResolver()
+
+	pkgRoot := filepath.Join(root, "node_modules", "with-pack")
+	writeFile(t, filepath.Join(pkgRoot, "package.json"), `{
+		"name": "with-pack",
+		"version": "1.0.0",
+		"skillex": { "pack": "docs/pack.yaml" }
+	}`)
+	writeFile(t, filepath.Join(pkgRoot, "docs", "pack.yaml"), `name: with-pack
+skills:
+  - file: usage.md
+    activate-when:
+      dependency-declared:
+        - source: npm-package
+          name: with-pack
+    scope: boundary
+`)
+
+	exports, errs := resolver.Exports(PackageRoot{RootAbs: pkgRoot})
+	if len(errs) > 0 {
+		t.Fatalf("Exports() errs=%v", errs)
+	}
+	if len(exports) != 2 {
+		t.Fatalf("exports = %#v, want legacy dir and explicit pack manifest", exports)
+	}
+	if exports[1].Format != SkillExportFormatPackManifest {
+		t.Fatalf("second export format = %q, want pack manifest", exports[1].Format)
+	}
+	if exports[1].Path != filepath.Join(pkgRoot, "docs", "pack.yaml") {
+		t.Fatalf("pack manifest path = %q", exports[1].Path)
+	}
+}
+
+func TestNodeResolverExportsRejectsTraversalPackPath(t *testing.T) {
+	root := t.TempDir()
+	resolver := NewNodeResolver()
+
+	// A dependency declares an escaping skillex.pack path, and the escape target
+	// actually exists outside the package root. It must NOT be exported.
+	pkgRoot := filepath.Join(root, "node_modules", "evil")
+	writeFile(t, filepath.Join(pkgRoot, "package.json"), `{
+		"name": "evil",
+		"version": "1.0.0",
+		"skillex": { "pack": "../../escape.yaml" }
+	}`)
+	writeFile(t, filepath.Join(root, "escape.yaml"), `name: evil
+skills:
+  - file: x.md
+    activate-when:
+      files-present:
+        - Dockerfile
+`)
+
+	exports, errs := resolver.Exports(PackageRoot{RootAbs: pkgRoot})
+	if len(errs) > 0 {
+		t.Fatalf("Exports() errs=%v", errs)
+	}
+	for _, e := range exports {
+		if e.Format == SkillExportFormatPackManifest {
+			t.Fatalf("traversal pack path was exported: %#v", e)
+		}
+	}
+}
+
+func TestNodeResolverExportsRejectsSymlinkEscapingPackPath(t *testing.T) {
+	root := t.TempDir()
+	resolver := NewNodeResolver()
+
+	// The escape target lives outside the package root and holds a perfectly
+	// valid pack.yaml + skill, so only the symlink containment check can stop it.
+	external := filepath.Join(root, "external")
+	writeFile(t, filepath.Join(external, "pack.yaml"), `name: evil
+skills:
+  - file: x.md
+    activate-when:
+      files-present:
+        - Dockerfile
+`)
+	writeFile(t, filepath.Join(external, "x.md"), "# pwned\n")
+
+	pkgRoot := filepath.Join(root, "node_modules", "evil-link")
+	writeFile(t, filepath.Join(pkgRoot, "package.json"), `{
+		"name": "evil-link",
+		"version": "1.0.0",
+		"skillex": { "pack": "linkdir/pack.yaml" }
+	}`)
+
+	// pkgRoot/linkdir is an intermediate-component symlink pointing outside the
+	// package root. The lexical guard (no "..", not absolute) passes, but the
+	// resolved target escapes pkgRoot and must be rejected.
+	link := filepath.Join(pkgRoot, "linkdir")
+	if err := os.Symlink(external, link); err != nil {
+		t.Skipf("symlinks unsupported: %v", err)
+	}
+
+	exports, errs := resolver.Exports(PackageRoot{RootAbs: pkgRoot})
+	if len(errs) > 0 {
+		t.Fatalf("Exports() errs=%v", errs)
+	}
+	for _, e := range exports {
+		if e.Format == SkillExportFormatPackManifest {
+			t.Fatalf("symlink-escaping pack path was exported: %#v", e)
+		}
+	}
+}
+
 func TestNodeResolverExportsSkipsMissingFalseNullAndInvalidConfig(t *testing.T) {
 	root := t.TempDir()
 	resolver := NewNodeResolver()

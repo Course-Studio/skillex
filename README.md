@@ -267,6 +267,65 @@ When using FooClient, all API calls return a Result type...
 
 ---
 
+## Project-local packs
+
+A pack bundles skill files with activation rules. The first supported pack type
+is a project-local pack that activates during `skillex refresh` when files are
+present in the repository.
+
+Skillex discovers project-local pack manifests at:
+
+```
+skillex/pack.yaml
+skillex/packs/*/pack.yaml
+```
+
+Example:
+
+```yaml
+name: docker
+version: 1.0.0
+description: Docker guidance for repositories with Dockerfiles.
+
+skills:
+  - file: docker.md
+    activate-when:
+      files-present:
+        - Dockerfile
+        - Dockerfile.*
+    scope: subtree
+
+  - file: typescript.md
+    activate-when:
+      files-matching:
+        - "**/*.ts"
+        - "**/*.tsx"
+    scope: matching-files
+```
+
+The skill file path is relative to the pack manifest. A co-located
+`docker.test.md` file is discovered automatically.
+
+Supported activation and scope fields in this initial pack implementation:
+
+| Field | Description |
+|---|---|
+| `activate-when.files-present` | Glob patterns matched against repository files. |
+| `activate-when.files-matching` | Glob patterns matched against repository files. |
+| `activate-when.dependency-declared` | Dependency conditions matched against the boundary that resolved a package-shipped pack. |
+| `files` | Optional glob patterns for `scope: matching-files`; when omitted, the activation matches are used. |
+| `scope: repo` | Activate the skill for the whole repository (`**`). |
+| `scope: boundary` | Activate for the dependency boundary that resolved a package-shipped pack. |
+| `scope: subtree` | Activate for the directory containing the matched file and below. Default. |
+| `scope: directory` | Activate for files immediately inside the matched file's directory. |
+| `scope: matching-files` | Activate for the exact files matched by the activation or `files` patterns. |
+| `scope: nearest-ancestor` | Activate for the nearest containing directory and below. |
+
+Pack skills are indexed individually with `source_type: pack`. Existing projects
+with no pack manifests behave exactly as before.
+
+---
+
 ## Exporting skills from a package
 
 Any npm package can export skills by adding a `skillex` field to its `package.json`:
@@ -300,6 +359,43 @@ skillex init --package
 
 **Public skills** are linked when the package appears as a dependency of the current scope.
 **Private skills** are linked when the agent's working path is inside the package's source tree.
+
+Packages can also ship a pack manifest alongside the legacy directories:
+
+```text
+skillex/
+  pack.yaml
+  usage.md
+  public/
+    consumer.md
+```
+
+```yaml
+name: "@acme/foo"
+version: 1.0.0
+skills:
+  - file: usage.md
+    activate-when:
+      dependency-declared:
+        - source: npm-package
+          name: "@acme/foo"
+    scope: boundary
+```
+
+When `skillex/pack.yaml` is present, Skillex activates matching pack skills at
+refresh time and indexes them individually with package metadata. The existing
+`skillex/public` and `skillex/private` behavior remains supported.
+
+To ship the manifest from a non-default location, set the `pack` field in
+`package.json` (resolved relative to the package root):
+
+```json
+{
+  "skillex": {
+    "pack": "docs/skillex/pack.yaml"
+  }
+}
+```
 
 ### Custom skill directory
 

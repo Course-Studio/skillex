@@ -8,6 +8,7 @@ import (
 
 	"github.com/course-studio/skillex/internal/config"
 	"github.com/course-studio/skillex/internal/frontmatter"
+	"github.com/course-studio/skillex/internal/packs"
 )
 
 // SkillFile represents a discovered skill file and its parsed metadata.
@@ -36,6 +37,8 @@ type SkillFile struct {
 	DependencyBoundary string
 	// PackageRoot is the relPath of the installed package root that owns this skill.
 	PackageRoot string
+	// ExplicitScopes are precomputed scopes for activated skills such as pack skills.
+	ExplicitScopes []string
 }
 
 // Scanner discovers skill files within a repository.
@@ -108,6 +111,10 @@ func (s *Scanner) Scan() (*ScanResult, error) {
 		result.Errors = append(result.Errors, errs...)
 	}
 
+	packSkills, errs := s.scanProjectPacks()
+	result.RepoSkills = append(result.RepoSkills, packSkills...)
+	result.Errors = append(result.Errors, errs...)
+
 	return result, nil
 }
 
@@ -151,21 +158,113 @@ func (s *Scanner) scanDependencyBoundary(boundaryPath, boundaryRel string) ([]Sk
 			errs = append(errs, exportErrs...)
 
 			for _, export := range exports {
-				if export.Format != SkillExportFormatLegacyDir {
+				switch export.Format {
+				case SkillExportFormatLegacyDir:
+					depSkills, depErrs := s.scanSkilexDir(
+						export.Path,
+						pkgRoot.Dependency.Name,
+						pkgRoot.Dependency.Version,
+						filepath.ToSlash(boundary.RootRel),
+						filepath.ToSlash(pkgRoot.RootRel),
+					)
+					skills = append(skills, depSkills...)
+					errs = append(errs, depErrs...)
+				case SkillExportFormatPackManifest:
+					depSkills, depErrs := s.scanDependencyPack(export.Path, *boundary, pkgRoot)
+					skills = append(skills, depSkills...)
+					errs = append(errs, depErrs...)
+				default:
 					continue
 				}
-
-				depSkills, depErrs := s.scanSkilexDir(
-					export.Path,
-					pkgRoot.Dependency.Name,
-					pkgRoot.Dependency.Version,
-					filepath.ToSlash(boundary.RootRel),
-					filepath.ToSlash(pkgRoot.RootRel),
-				)
-				skills = append(skills, depSkills...)
-				errs = append(errs, depErrs...)
 			}
 		}
+	}
+
+	return skills, errs
+}
+
+func (s *Scanner) scanDependencyPack(manifestPath string, boundary Boundary, pkgRoot PackageRoot) ([]SkillFile, []error) {
+	var skills []SkillFile
+	var errs []error
+
+	pack, err := packs.Load(manifestPath)
+	if err != nil {
+		return nil, []error{err}
+	}
+
+	ctx := packs.ActivationContext{
+		BoundaryRel: filepath.ToSlash(boundary.RootRel),
+		Dependency: packs.DependencyFact{
+			Source:  pkgRoot.Dependency.Source,
+			Name:    pkgRoot.Dependency.Name,
+			Version: pkgRoot.Dependency.Version,
+		},
+	}
+
+	// A pack may list the same skill file under several manifest entries; its
+	// paired .test.md must be emitted only once per unique path.
+	seenTest := map[string]bool{}
+
+	for _, skill := range pack.Manifest.Skills {
+		scopes, err := packs.ActivateSkillWithContext(s.root, skill, ctx)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("activating pack %s skill %s: %w", pack.Manifest.Name, skill.File, err))
+			continue
+		}
+		if len(scopes) == 0 {
+			continue
+		}
+
+		absPath, err := packs.SafeSkillPath(pack.Dir, skill.File)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("pack %s skill %s: %w", pack.Manifest.Name, skill.File, err))
+			continue
+		}
+		relPath, _ := filepath.Rel(s.root, absPath)
+		sfs, err := s.readSkillFileWithScopes(
+			absPath,
+			filepath.ToSlash(relPath),
+			pkgRoot.Dependency.Name,
+			pkgRoot.Dependency.Version,
+			"public",
+			"pack",
+			filepath.ToSlash(boundary.RootRel),
+			filepath.ToSlash(pkgRoot.RootRel),
+			scopes,
+		)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("pack skill %s: %w", relPath, err))
+			continue
+		}
+		skills = append(skills, sfs...)
+
+		testRel := strings.TrimSuffix(skill.File, ".md") + ".test.md"
+		testAbsPath, err := packs.SafeSkillPath(pack.Dir, testRel)
+		if err != nil {
+			// Derived test path escapes the pack dir; skip rather than read it.
+			continue
+		}
+		testRelPath, _ := filepath.Rel(s.root, testAbsPath)
+		if seenTest[testRelPath] {
+			continue
+		}
+		seenTest[testRelPath] = true
+		testSfs, err := s.readSkillFileWithScopes(
+			testAbsPath,
+			filepath.ToSlash(testRelPath),
+			pkgRoot.Dependency.Name,
+			pkgRoot.Dependency.Version,
+			"public",
+			"pack",
+			filepath.ToSlash(boundary.RootRel),
+			filepath.ToSlash(pkgRoot.RootRel),
+			nil,
+		)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("pack test %s: %w", testRelPath, err))
+			continue
+		}
+		skills = append(skills, testSfs...)
 	}
 
 	return skills, errs
@@ -212,6 +311,10 @@ func (s *Scanner) scanSkilexDir(skilexDir, pkgName, pkgVersion, boundaryRel, pkg
 // readSkillFile reads a skill (or test) file and returns SkillFile(s).
 // For repo-level skills, the path may not exist (gracefully skip).
 func (s *Scanner) readSkillFile(absPath, relPath, pkgName, pkgVersion, visibility, sourceType, boundaryRel, pkgRootRel string) ([]SkillFile, error) {
+	return s.readSkillFileWithScopes(absPath, relPath, pkgName, pkgVersion, visibility, sourceType, boundaryRel, pkgRootRel, nil)
+}
+
+func (s *Scanner) readSkillFileWithScopes(absPath, relPath, pkgName, pkgVersion, visibility, sourceType, boundaryRel, pkgRootRel string, explicitScopes []string) ([]SkillFile, error) {
 	data, err := os.ReadFile(absPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -244,9 +347,76 @@ func (s *Scanner) readSkillFile(absPath, relPath, pkgName, pkgVersion, visibilit
 		TestFor:            testFor,
 		DependencyBoundary: boundaryRel,
 		PackageRoot:        pkgRootRel,
+		ExplicitScopes:     explicitScopes,
 	}
 
 	return []SkillFile{sf}, nil
+}
+
+func (s *Scanner) scanProjectPacks() ([]SkillFile, []error) {
+	var skills []SkillFile
+
+	// A pack may list the same skill file in several manifest entries (with
+	// different activate-when/scope). Its paired .test.md must be emitted only
+	// once per unique path so the test scenario is not inserted multiple times.
+	seenTest := map[string]bool{}
+
+	activated, errs := packs.ActivateProject(s.root)
+	for _, activation := range activated {
+		safeAbs, err := packs.SafeSkillPath(activation.Pack.Dir, activation.Skill.File)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("pack %s skill %s: %w", activation.Pack.Manifest.Name, activation.Skill.File, err))
+			continue
+		}
+		relPath, _ := filepath.Rel(s.root, safeAbs)
+		sfs, err := s.readSkillFileWithScopes(
+			safeAbs,
+			filepath.ToSlash(relPath),
+			"",
+			"",
+			"repo",
+			"pack",
+			"",
+			"",
+			activation.Scopes,
+		)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("pack skill %s: %w", relPath, err))
+			continue
+		}
+		skills = append(skills, sfs...)
+
+		testRel := strings.TrimSuffix(activation.Skill.File, ".md") + ".test.md"
+		testAbsPath, err := packs.SafeSkillPath(activation.Pack.Dir, testRel)
+		if err != nil {
+			// The derived test path escapes the pack dir (e.g. via a symlink);
+			// skip it rather than reading outside the pack.
+			continue
+		}
+		testRelPath, _ := filepath.Rel(s.root, testAbsPath)
+		if seenTest[testRelPath] {
+			continue
+		}
+		seenTest[testRelPath] = true
+		testSfs, err := s.readSkillFileWithScopes(
+			testAbsPath,
+			filepath.ToSlash(testRelPath),
+			"",
+			"",
+			"repo",
+			"pack",
+			"",
+			"",
+			nil,
+		)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("pack test %s: %w", testRelPath, err))
+			continue
+		}
+		skills = append(skills, testSfs...)
+	}
+
+	return skills, errs
 }
 
 // ScanDirectory scans a specific directory for skill files (used by init --package).

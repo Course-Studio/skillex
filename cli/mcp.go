@@ -45,7 +45,7 @@ Configure in your agent harness:
 			}
 			defer reg.Close()
 
-			return mcpserver.Serve(reg, Version)
+			return mcpserver.Serve(reg, root, Version)
 		},
 	}
 }

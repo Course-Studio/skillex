@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 
@@ -31,8 +32,8 @@ func newQueryCmd() *cobra.Command {
 All filters are intersected — only skills matching all specified criteria are returned.
 
 Use --search for intent-based discovery when you don't know the topic/tag taxonomy.
-Each space or comma-separated term is matched independently against skill names and
-descriptions, so multiple concepts can be found in one call.
+Each space or comma-separated term is matched independently against skill names,
+descriptions, topics, and tags, so multiple concepts can be found in one call.
 
 When no filters are provided, a vocabulary response is returned listing the available
 topics, tags, and packages you can filter by.
@@ -62,7 +63,7 @@ Examples:
 			}
 			defer reg.Close()
 
-			eng := query.New(reg)
+			eng := query.New(reg, root)
 
 			var topics []string
 			if topicFlag != "" {
@@ -155,10 +156,19 @@ Examples:
 	cmd.Flags().StringVar(&topicFlag, "topic", "", "Comma-separated topic filters")
 	cmd.Flags().StringVar(&tagsFlag, "tags", "", "Comma-separated tag filters")
 	cmd.Flags().StringVar(&packageFlag, "package", "", "Package name filter")
-	cmd.Flags().StringVar(&searchFlag, "search", "", "Keyword search across skill names and descriptions (space/comma-separated terms)")
+	cmd.Flags().StringVar(&searchFlag, "search", "", "Keyword search across skill names, descriptions, topics, and tags (space/comma-separated terms)")
 	cmd.Flags().StringVar(&formatFlag, "format", "", "Output format: content (default) or summary")
 
 	return cmd
+}
+
+// truncateDescription shortens s to at most 120 runes (ellipsis included),
+// cutting on a rune boundary so a multibyte description stays valid UTF-8.
+func truncateDescription(s string) string {
+	if utf8.RuneCountInString(s) <= 120 {
+		return s
+	}
+	return string([]rune(s)[:117]) + "..."
 }
 
 func printSummary(results []query.Result) {
@@ -169,11 +179,7 @@ func printSummary(results []query.Result) {
 			fmt.Printf("  %s\n", r.Name)
 		}
 		if r.Description != "" {
-			desc := r.Description
-			if len(desc) > 120 {
-				desc = desc[:117] + "..."
-			}
-			fmt.Printf("  %s\n", styleDim.Render(desc))
+			fmt.Printf("  %s\n", styleDim.Render(truncateDescription(r.Description)))
 		}
 
 		var meta []string
@@ -254,5 +260,10 @@ func printNoMatch(resp *query.Response) {
 		header += " (" + strings.Join(parts, ", ") + ")"
 	}
 	header += "."
+	// Surface the engine's explanatory note (e.g. an out-of-repo --path) on the
+	// human surface too — it already reaches agents via --json/MCP.
+	if resp.Note != "" {
+		fmt.Fprintln(os.Stderr, styleDim.Render(resp.Note))
+	}
 	printVocabulary(resp.Vocabulary, header)
 }

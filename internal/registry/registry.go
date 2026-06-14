@@ -258,6 +258,22 @@ func (r *Registry) GetSkillByPath(path string) (*Skill, error) {
 	return s, nil
 }
 
+// GetSkillContent returns just the content column for the skill at path, or ""
+// when no such skill exists. Unlike GetSkillByPath it skips the topic/tag/scope
+// metadata follow-up queries, for read paths (e.g. MCP resource reads) that only
+// need the body.
+func (r *Registry) GetSkillContent(path string) (string, error) {
+	var content string
+	err := r.db.QueryRow(`SELECT content FROM skills WHERE path = ?`, path).Scan(&content)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return content, nil
+}
+
 // QueryByScope returns all skills visible from the given scope globs.
 func (r *Registry) QueryByScope(scopes []string) ([]Skill, error) {
 	if len(scopes) == 0 {
@@ -675,9 +691,10 @@ func (r *Registry) populateMeta(s *Skill) error {
 	return rows.Err()
 }
 
-// QueryBySearch returns skills whose name or description matches any of the
-// whitespace/comma-separated tokens in the search string.
-// The match is case-insensitive substring (LIKE). Returns nil when search is empty.
+// QueryBySearch returns skills whose name, description, topics, or tags match
+// any of the whitespace/comma-separated tokens in the search string.
+// The match is case-insensitive substring (LIKE, with %/_ escaped as literals).
+// Returns nil when search is empty.
 func (r *Registry) QueryBySearch(search string) ([]Skill, error) {
 	if search == "" {
 		return nil, nil
@@ -687,13 +704,26 @@ func (r *Registry) QueryBySearch(search string) ([]Skill, error) {
 		return nil, nil
 	}
 
-	// Build: (LOWER(name) LIKE ? OR LOWER(description) LIKE ?) OR (...)
+	// escapeLike makes a token safe as a LIKE pattern literal: backslash first,
+	// then the two LIKE metacharacters. Paired with ESCAPE '\' in the SQL.
+	escapeLike := func(s string) string {
+		s = strings.ReplaceAll(s, "\\", "\\\\")
+		s = strings.ReplaceAll(s, "%", "\\%")
+		s = strings.ReplaceAll(s, "_", "\\_")
+		return s
+	}
+
 	clauses := make([]string, len(tokens))
-	args := make([]any, 0, len(tokens)*2)
+	args := make([]any, 0, len(tokens)*4)
 	for i, tok := range tokens {
-		pattern := "%" + strings.ToLower(tok) + "%"
-		clauses[i] = "(LOWER(COALESCE(name,'')) LIKE ? OR LOWER(COALESCE(description,'')) LIKE ?)"
-		args = append(args, pattern, pattern)
+		pattern := "%" + escapeLike(strings.ToLower(tok)) + "%"
+		clauses[i] = `(
+			LOWER(COALESCE(name,'')) LIKE ? ESCAPE '\'
+			OR LOWER(COALESCE(description,'')) LIKE ? ESCAPE '\'
+			OR id IN (SELECT skill_id FROM skill_topics WHERE LOWER(topic) LIKE ? ESCAPE '\')
+			OR id IN (SELECT skill_id FROM skill_tags WHERE LOWER(tag) LIKE ? ESCAPE '\')
+		)`
+		args = append(args, pattern, pattern, pattern, pattern)
 	}
 
 	q := fmt.Sprintf(

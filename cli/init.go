@@ -125,7 +125,7 @@ func initRepo(root string, yes bool, harness string, useYAML bool) error {
 		return err
 	}
 
-	section, err := agents.GenerateSection(reg)
+	section, err := agents.GenerateSectionWithCutoff(reg, cfg.CatalogCutoff)
 	if err != nil {
 		return err
 	}
@@ -283,7 +283,31 @@ func createAgentsMD(root string) error {
 }
 
 func configureMCP(root, harness string) error {
-	mcpConfig := `{
+	var configPath, mcpConfig string
+
+	switch harness {
+	case "claude-code":
+		configPath = filepath.Join(root, ".mcp.json")
+		command, args := "npx", `["skillex", "mcp"]`
+		if fileExists(filepath.Join(root, "pnpm-lock.yaml")) || fileExists(filepath.Join(root, "pnpm-workspace.yaml")) {
+			command, args = "pnpm", `["exec", "skillex", "mcp"]`
+		}
+		mcpConfig = fmt.Sprintf(`{
+  "mcpServers": {
+    "skillex": {
+      "command": %q,
+      "args": %s
+    }
+  }
+}
+`, command, args)
+	case "cursor", "windsurf":
+		dir := ".cursor"
+		if harness == "windsurf" {
+			dir = ".windsurf"
+		}
+		configPath = filepath.Join(root, dir, "mcp.json")
+		mcpConfig = `{
   "mcpServers": {
     "skillex": {
       "command": "skillex",
@@ -292,14 +316,6 @@ func configureMCP(root, harness string) error {
   }
 }
 `
-	var configPath string
-	switch harness {
-	case "cursor":
-		configPath = filepath.Join(root, ".cursor", "mcp.json")
-	case "claude-code":
-		configPath = filepath.Join(root, ".claude", "mcp.json")
-	case "windsurf":
-		configPath = filepath.Join(root, ".windsurf", "mcp.json")
 	default:
 		return fmt.Errorf("unknown harness %q (supported: cursor, claude-code, windsurf)", harness)
 	}
@@ -316,6 +332,12 @@ func configureMCP(root, harness string) error {
 	}
 
 	return os.WriteFile(configPath, []byte(mcpConfig), 0o644)
+}
+
+// fileExists reports whether the file at path exists.
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 func addSkilexToPackageJSON(path string) error {

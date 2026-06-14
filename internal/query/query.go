@@ -1,6 +1,7 @@
 package query
 
 import (
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -39,6 +40,7 @@ type Response struct {
 	Results    []Result     `json:"results,omitempty"`
 	Vocabulary *Vocabulary  `json:"vocabulary,omitempty"`
 	Query      *QueryEcho   `json:"query,omitempty"`
+	Note       string       `json:"note,omitempty"`
 }
 
 // QueryEcho captures the filters that were searched, included in no_match responses.
@@ -103,7 +105,7 @@ type Params struct {
 	Tags []string
 	// Package filters skills by package name.
 	Package string
-	// Search performs keyword search across skill name and description.
+	// Search performs keyword search across skill name, description, topics, and tags.
 	// Whitespace/comma-separated tokens are each matched independently (OR).
 	Search string
 	// Format controls output detail for result responses.
@@ -118,12 +120,50 @@ func (p Params) hasFilters() bool {
 
 // Engine executes structured skill queries against the registry.
 type Engine struct {
-	reg *registry.Registry
+	reg  *registry.Registry
+	root string
 }
 
-// New creates a new query Engine.
-func New(reg *registry.Registry) *Engine {
-	return &Engine{reg: reg}
+// New creates a query Engine. root is the repo root used to normalize
+// absolute --path arguments to repo-relative form; pass "" to disable.
+func New(reg *registry.Registry, root string) *Engine {
+	return &Engine{reg: reg, root: root}
+}
+
+// repoRelativePath normalizes a query path against the repo root.
+// Returns (relative-slash-path, false) for in-repo paths, or ("", true) when the
+// path escapes root (absolute-and-outside, or a relative path climbing out via
+// "../"). The repo root itself maps to "" (which the caller treats as match-all).
+//
+// It does not resolve symlinks (filepath.EvalSymlinks): a path that lexically lives
+// inside root but points through a symlink to outside is classified as inside. That
+// is safe here only because the normalized path is used purely as a scope-glob
+// matching key and no file is ever opened at it; revisit if that ever changes.
+func repoRelativePath(path, root string) (string, bool) {
+	path = strings.ReplaceAll(path, "\\", "/")
+	if !filepath.IsAbs(path) {
+		// A relative path that climbs out of the repo (../foo) is outside-repo too;
+		// mirror the absolute-path check so it gets the same no_match+note treatment.
+		if cleaned := filepath.ToSlash(filepath.Clean(path)); cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+			return "", true
+		}
+		return path, false
+	}
+	if root == "" {
+		return path, false
+	}
+	rel, err := filepath.Rel(root, filepath.FromSlash(path))
+	if err != nil {
+		return "", true
+	}
+	rel = filepath.ToSlash(rel)
+	if rel == ".." || strings.HasPrefix(rel, "../") {
+		return "", true
+	}
+	if rel == "." {
+		return "", false
+	}
+	return rel, false
 }
 
 // Execute runs a query and returns a typed Response.
@@ -137,6 +177,22 @@ func New(reg *registry.Registry) *Engine {
 func (e *Engine) Execute(p Params) (*Response, error) {
 	if !p.hasFilters() {
 		return e.vocabularyResponse()
+	}
+
+	pathIsRoot := false
+	if p.Path != "" {
+		rel, outside := repoRelativePath(p.Path, e.root)
+		if outside {
+			resp, err := e.noMatchResponse(p)
+			if err != nil {
+				return nil, err
+			}
+			resp.Note = "path is outside this repository: " + p.Path
+			return resp, nil
+		}
+		// A provided path that normalizes to "" is the repo root itself → match-all.
+		pathIsRoot = rel == ""
+		p.Path = rel
 	}
 
 	hasClassicFilters := len(p.Topics) > 0 || len(p.Tags) > 0 || p.Package != ""
@@ -185,7 +241,12 @@ func (e *Engine) Execute(p Params) (*Response, error) {
 		}
 	} else if !hasClassicFilters {
 		// Path is the only filter.
-		skills, err = e.reg.QueryByPath(p.Path)
+		if pathIsRoot {
+			// The repo root matches everything → the universally-scoped skills.
+			skills, err = e.reg.UniversalSkills()
+		} else {
+			skills, err = e.reg.QueryByPath(p.Path)
+		}
 		if err != nil {
 			return nil, err
 		}

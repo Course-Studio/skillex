@@ -23,8 +23,9 @@ const (
 
 // Config represents the root skillex configuration.
 type Config struct {
-	Version int    `yaml:"Version" json:"Version"`
-	Rules   []Rule `yaml:"Rules" json:"Rules"`
+	Version       int    `yaml:"Version" json:"Version"`
+	CatalogCutoff int    `yaml:"CatalogCutoff,omitempty" json:"CatalogCutoff,omitempty"`
+	Rules         []Rule `yaml:"Rules" json:"Rules"`
 }
 
 // Rule defines a scope-to-skills mapping, with optional dependency boundary.

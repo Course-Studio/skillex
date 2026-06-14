@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	mcplib "github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -14,7 +15,7 @@ import (
 )
 
 // Serve starts the MCP server using stdio transport.
-func Serve(reg *registry.Registry, version string) error {
+func Serve(reg *registry.Registry, root, version string) error {
 	s := server.NewMCPServer(
 		"skillex",
 		version,
@@ -26,11 +27,11 @@ func Serve(reg *registry.Registry, version string) error {
 	queryTool := mcplib.NewTool(
 		"skillex_query",
 		mcplib.WithDescription(
-			"Query skillex skills by path, topic, tags, package, or keyword search. "+
-				"Use 'search' for intent-based discovery when you don't know the skill taxonomy — "+
-				"pass space or comma-separated concepts and all matching skills are returned in one call. "+
-				"Use topic/tags for structured filtering when you know the organization. "+
-				"Returns skill content or metadata for agent consumption.",
+			"Look up repository skills, conventions, and documentation for this codebase. "+
+				"Query skillex skills by path, topic, tags, package, or keyword search. "+
+				"Use 'search' for intent-based discovery across skill names, descriptions, topics, and tags. "+
+				"Use 'path' (repo-relative or absolute inside the repo) to get the skills that apply to a file. "+
+				"A query with no parameters returns the available vocabulary.",
 		),
 		mcplib.WithString("path",
 			mcplib.Description("File path or glob pattern to scope the query"),
@@ -46,7 +47,7 @@ func Serve(reg *registry.Registry, version string) error {
 		),
 		mcplib.WithString("search",
 			mcplib.Description(
-				"Keyword search across skill names and descriptions. "+
+				"Keyword search across skill names, descriptions, topics, and tags. "+
 					"Space or comma-separated terms are each matched independently — "+
 					"use this to find skills by concept when you don't know the topic/tag taxonomy. "+
 					"Example: 'search card pagination' finds all skills related to any of those terms.",
@@ -59,7 +60,7 @@ func Serve(reg *registry.Registry, version string) error {
 	)
 
 	s.AddTool(queryTool, func(ctx context.Context, req mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
-		return handleQuery(reg, req)
+		return handleQuery(reg, root, req)
 	})
 
 	// Register resources for each skill
@@ -77,12 +78,17 @@ func Serve(reg *registry.Registry, version string) error {
 			mcplib.WithResourceDescription(skillDescription(sk)),
 			mcplib.WithMIMEType("text/markdown"),
 		)
+		read := resourceContentFunc(reg, sk.Path)
 		s.AddResource(resource, func(ctx context.Context, req mcplib.ReadResourceRequest) ([]mcplib.ResourceContents, error) {
+			content, err := read()
+			if err != nil {
+				return nil, err
+			}
 			return []mcplib.ResourceContents{
 				mcplib.TextResourceContents{
 					URI:      uri,
 					MIMEType: "text/markdown",
-					Text:     sk.Content,
+					Text:     content,
 				},
 			}, nil
 		})
@@ -91,7 +97,19 @@ func Serve(reg *registry.Registry, version string) error {
 	return server.ServeStdio(s)
 }
 
-func handleQuery(reg *registry.Registry, req mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
+// resourceContentFunc returns a closure that reads the current content of the
+// skill at path from the registry on each call, so a mid-session refresh is
+// reflected instead of a boot-time snapshot. A skill removed since boot yields
+// an empty string rather than an error.
+func resourceContentFunc(reg *registry.Registry, path string) func() (string, error) {
+	return func() (string, error) {
+		// Content-only read: avoids the topic/tag/scope metadata queries that
+		// GetSkillByPath runs, which this closure would only discard.
+		return reg.GetSkillContent(path)
+	}
+}
+
+func handleQuery(reg *registry.Registry, root string, req mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
 	pathVal, _ := req.Params.Arguments["path"].(string)
 	topicVal, _ := req.Params.Arguments["topic"].(string)
 	tagsVal, _ := req.Params.Arguments["tags"].(string)
@@ -123,7 +141,7 @@ func handleQuery(reg *registry.Registry, req mcplib.CallToolRequest) (*mcplib.Ca
 		format = query.FormatDefault
 	}
 
-	eng := query.New(reg)
+	eng := query.New(reg, root)
 	resp, err := eng.Execute(query.Params{
 		Path:    pathVal,
 		Topics:  topics,
@@ -215,8 +233,8 @@ func skillDescription(s registry.Skill) string {
 	}
 	if s.Description != "" {
 		desc := s.Description
-		if len(desc) > 120 {
-			desc = desc[:117] + "..."
+		if utf8.RuneCountInString(desc) > 120 {
+			desc = string([]rune(desc)[:117]) + "..."
 		}
 		parts = append(parts, desc)
 	}

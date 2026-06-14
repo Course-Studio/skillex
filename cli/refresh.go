@@ -96,7 +96,7 @@ Use --dry-run to preview what would change without writing.`,
 
 			if !dryRun {
 				agentsPath := filepath.Join(root, "AGENTS.md")
-				section, err := agents.GenerateSection(reg)
+				section, err := agents.GenerateSectionWithCutoff(reg, cfg.CatalogCutoff)
 				if err != nil {
 					return fmt.Errorf("generating AGENTS.md section: %w", err)
 				}

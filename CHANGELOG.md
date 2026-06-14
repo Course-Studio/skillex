@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
 
 ## [Unreleased]
 
+## [0.8.1]
+
+- **Changed:** releases now publish to npm via GitHub OIDC trusted publishing instead of a stored `NPM_TOKEN` secret — no long-lived credential. No functional changes to the CLI.
+
 ## [0.8.0]
 
 Claude Code agent experience.

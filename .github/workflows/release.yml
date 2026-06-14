@@ -131,10 +131,14 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
+      # Trusted publishing (OIDC) requires npm >= 11.5.1. Pin to a recent npm so
+      # the publish authenticates via the GitHub OIDC token instead of a secret.
+      - name: Ensure npm supports trusted publishing
+        run: npm install -g npm@latest
+
       - name: Publish platform packages
         env:
           VERSION: ${{ needs.verify_release.outputs.version }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           tar_dir="$(realpath "${{ steps.download_tarballs.outputs.download-path }}")"
           for tarball in \
@@ -153,7 +157,6 @@ jobs:
       - name: Publish wrapper package
         env:
           VERSION: ${{ needs.verify_release.outputs.version }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           tar_dir="$(realpath "${{ steps.download_tarballs.outputs.download-path }}")"
           tarball="$tar_dir/course-studio-skillex-by-jeremy-${VERSION}.tgz"

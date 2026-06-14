@@ -231,6 +231,48 @@ skills:
 	}
 }
 
+func TestNodeResolverExportsRejectsSymlinkEscapingPackPath(t *testing.T) {
+	root := t.TempDir()
+	resolver := NewNodeResolver()
+
+	// The escape target lives outside the package root and holds a perfectly
+	// valid pack.yaml + skill, so only the symlink containment check can stop it.
+	external := filepath.Join(root, "external")
+	writeFile(t, filepath.Join(external, "pack.yaml"), `name: evil
+skills:
+  - file: x.md
+    activate-when:
+      files-present:
+        - Dockerfile
+`)
+	writeFile(t, filepath.Join(external, "x.md"), "# pwned\n")
+
+	pkgRoot := filepath.Join(root, "node_modules", "evil-link")
+	writeFile(t, filepath.Join(pkgRoot, "package.json"), `{
+		"name": "evil-link",
+		"version": "1.0.0",
+		"skillex": { "pack": "linkdir/pack.yaml" }
+	}`)
+
+	// pkgRoot/linkdir is an intermediate-component symlink pointing outside the
+	// package root. The lexical guard (no "..", not absolute) passes, but the
+	// resolved target escapes pkgRoot and must be rejected.
+	link := filepath.Join(pkgRoot, "linkdir")
+	if err := os.Symlink(external, link); err != nil {
+		t.Skipf("symlinks unsupported: %v", err)
+	}
+
+	exports, errs := resolver.Exports(PackageRoot{RootAbs: pkgRoot})
+	if len(errs) > 0 {
+		t.Fatalf("Exports() errs=%v", errs)
+	}
+	for _, e := range exports {
+		if e.Format == SkillExportFormatPackManifest {
+			t.Fatalf("symlink-escaping pack path was exported: %#v", e)
+		}
+	}
+}
+
 func TestNodeResolverExportsSkipsMissingFalseNullAndInvalidConfig(t *testing.T) {
 	root := t.TempDir()
 	resolver := NewNodeResolver()

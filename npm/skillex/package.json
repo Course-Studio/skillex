@@ -3,13 +3,13 @@
   "version": "0.7.0",
   "description": "Skill management for AI agents in Node.js projects",
   "license": "Apache-2.0",
-  "homepage": "https://github.com/course-studio/skillex#readme",
+  "homepage": "https://github.com/Course-Studio/skillex#readme",
   "bugs": {
-    "url": "https://github.com/course-studio/skillex/issues"
+    "url": "https://github.com/Course-Studio/skillex/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/course-studio/skillex"
+    "url": "https://github.com/Course-Studio/skillex"
   },
   "bin": {
     "skillex": "bin/skillex.js"

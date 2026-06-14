@@ -49,6 +49,10 @@ func (l *Linker) Link(result *scanner.ScanResult) []LinkedSkill {
 			continue
 		}
 		seenRepo[sf.RelPath] = true
+		if len(sf.ExplicitScopes) > 0 {
+			linked = append(linked, LinkedSkill{SkillFile: sf, Scopes: sf.ExplicitScopes})
+			continue
+		}
 		scopes := repoSkillScopes[sf.RelPath]
 		linked = append(linked, LinkedSkill{SkillFile: sf, Scopes: scopes})
 	}
@@ -131,11 +135,19 @@ func (l *Linker) resolveDepSkillScopes(skills []scanner.SkillFile) map[string][]
 
 		switch sf.Visibility {
 		case "public":
+			if len(sf.ExplicitScopes) > 0 {
+				result[sf.RelPath] = appendUnique(result[sf.RelPath], sf.ExplicitScopes...)
+				continue
+			}
 			if sf.DependencyBoundary == "" {
 				continue
 			}
 			result[sf.RelPath] = appendUnique(result[sf.RelPath], boundaryScopes[sf.DependencyBoundary]...)
 		case "private":
+			if len(sf.ExplicitScopes) > 0 {
+				result[sf.RelPath] = appendUnique(result[sf.RelPath], sf.ExplicitScopes...)
+				continue
+			}
 			if sf.PackageRoot == "" {
 				continue
 			}

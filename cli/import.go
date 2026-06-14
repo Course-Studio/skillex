@@ -13,11 +13,10 @@ import (
 
 func newImportCmd() *cobra.Command {
 	var (
-		visibilityFlag string
-		topicsFlag     string
-		destFlag       string
-		batch          bool
-		skipReview     bool
+		topicsFlag string
+		destFlag   string
+		batch      bool
+		skipReview bool
 	)
 
 	cmd := &cobra.Command{
@@ -53,13 +52,12 @@ a test stub.`,
 			}
 
 			if batch {
-				return runImportBatch(root, filePath, dest, visibilityFlag, topics, skipReview)
+				return runImportBatch(root, filePath, dest, topics, skipReview)
 			}
-			return runImport(root, filePath, dest, visibilityFlag, topics, skipReview)
+			return runImport(root, filePath, dest, topics, skipReview)
 		},
 	}
 
-	cmd.Flags().StringVar(&visibilityFlag, "visibility", "public", "Skill visibility: public or private")
 	cmd.Flags().StringVar(&topicsFlag, "topic", "", "Comma-separated topics to assign")
 	cmd.Flags().StringVar(&destFlag, "dest", "", "Destination directory (default: skillex/vendor/local/)")
 	cmd.Flags().BoolVar(&batch, "batch", false, "Import an entire directory of files")
@@ -68,7 +66,7 @@ a test stub.`,
 	return cmd
 }
 
-func runImport(root, filePath, dest, visibility string, topics []string, skipReview bool) error {
+func runImport(root, filePath, dest string, topics []string, skipReview bool) error {
 	if !flagQuiet {
 		fmt.Fprintln(os.Stderr, styleHeader.Render("  skillex import  "))
 		fmt.Fprintf(os.Stderr, "  Importing %s\n", styleDim.Render(filePath))
@@ -80,6 +78,11 @@ func runImport(root, filePath, dest, visibility string, topics []string, skipRev
 		return fmt.Errorf("reading file: %w", err)
 	}
 
+	// Reject HTML payloads
+	if isHTMLContent(data) {
+		return fmt.Errorf("%s looks like an HTML page, not a Markdown skill file", filePath)
+	}
+
 	// Review
 	if !skipReview {
 		issues := reviewContent(data)
@@ -89,13 +92,14 @@ func runImport(root, filePath, dest, visibility string, topics []string, skipRev
 			for _, iss := range issues {
 				fmt.Fprintf(os.Stderr, "  %s %s\n", styleDim.Render("•"), iss)
 			}
-			if !flagQuiet {
-				fmt.Fprint(os.Stderr, "\nProceed anyway? [y/N] ")
-				var answer string
-				fmt.Scanln(&answer)
-				if strings.ToLower(answer) != "y" {
-					return fmt.Errorf("aborted by user")
-				}
+			if flagQuiet || !stdinIsInteractive() {
+				return fmt.Errorf("safety review flagged %d issue(s); rerun interactively to confirm, or use --skip-review for trusted sources", len(issues))
+			}
+			fmt.Fprint(os.Stderr, "\nProceed anyway? [y/N] ")
+			var answer string
+			fmt.Scanln(&answer)
+			if strings.ToLower(answer) != "y" {
+				return fmt.Errorf("aborted by user")
 			}
 		}
 	}
@@ -117,10 +121,6 @@ func runImport(root, filePath, dest, visibility string, topics []string, skipRev
 	fm, body, _ := frontmatter.Parse(data)
 	if len(topics) > 0 && len(fm.Topics) == 0 {
 		fm.Topics = topics
-	}
-	if visibility != "" {
-		// Store visibility hint in source field conventionally
-		_ = visibility // visibility is handled by directory placement, not frontmatter
 	}
 
 	fmStr := frontmatter.FormatFrontmatter(fm)
@@ -152,7 +152,7 @@ func runImport(root, filePath, dest, visibility string, topics []string, skipRev
 	return nil
 }
 
-func runImportBatch(root, dir, dest, visibility string, topics []string, skipReview bool) error {
+func runImportBatch(root, dir, dest string, topics []string, skipReview bool) error {
 	if !flagQuiet {
 		fmt.Fprintf(os.Stderr, "  Batch importing from %s\n", styleDim.Render(dir))
 	}
@@ -171,7 +171,7 @@ func runImportBatch(root, dir, dest, visibility string, topics []string, skipRev
 			continue
 		}
 		filePath := filepath.Join(dir, entry.Name())
-		if err := runImport(root, filePath, dest, visibility, topics, skipReview); err != nil {
+		if err := runImport(root, filePath, dest, topics, skipReview); err != nil {
 			fmt.Fprintf(os.Stderr, "  %s %s: %v\n", styleError.Render("✗"), entry.Name(), err)
 			continue
 		}

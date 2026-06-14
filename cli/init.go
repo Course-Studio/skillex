@@ -40,7 +40,7 @@ Flags:
   --yaml     Generate skillex.yaml instead of the default skillex.json
   --yes      Accept all defaults without prompting`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			root := repoRoot()
+			root := initRoot()
 
 			if pkg {
 				return initPackage(root, yes)

@@ -34,13 +34,21 @@ func (l *Linker) Link(result *scanner.ScanResult) []LinkedSkill {
 	// Map from skill relPath -> scopes for repo-level skills
 	repoSkillScopes := l.resolveRepoSkillScopes(result.RepoSkills)
 
-	// Add repo-level skills
+	// Add repo-level skills, deduplicating by RelPath: the same skill may be
+	// listed in several rules (that is how multi-scope assignment works) and
+	// the scanner reads it once per rule. Scopes are already merged across
+	// rules in repoSkillScopes.
+	seenRepo := map[string]bool{}
 	for _, sf := range result.RepoSkills {
 		if sf.IsTest {
 			// Tests are linked via skill_tests, not as regular scoped skills
 			linked = append(linked, LinkedSkill{SkillFile: sf, Scopes: []string{}})
 			continue
 		}
+		if seenRepo[sf.RelPath] {
+			continue
+		}
+		seenRepo[sf.RelPath] = true
 		scopes := repoSkillScopes[sf.RelPath]
 		linked = append(linked, LinkedSkill{SkillFile: sf, Scopes: scopes})
 	}

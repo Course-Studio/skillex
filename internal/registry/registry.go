@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -57,10 +58,21 @@ CREATE INDEX IF NOT EXISTS idx_skill_scopes ON skill_scopes(scope);
 CREATE INDEX IF NOT EXISTS idx_skill_tests ON skill_tests(skill_id);
 `
 
+// execer abstracts *sql.DB and *sql.Tx for write operations.
+type execer interface {
+	Exec(query string, args ...any) (sql.Result, error)
+	QueryRow(query string, args ...any) *sql.Row
+}
+
 // Registry wraps a SQLite database for skill storage and retrieval.
 type Registry struct {
 	db   *sql.DB
 	path string
+}
+
+// Begin starts a write transaction on the registry database.
+func (r *Registry) Begin() (*sql.Tx, error) {
+	return r.db.Begin()
 }
 
 // Skill is a registry entry.
@@ -134,9 +146,22 @@ func (r *Registry) Path() string {
 	return r.path
 }
 
-// Clear removes all data from the registry (for a full rebuild).
-func (r *Registry) Clear() error {
-	_, err := r.db.Exec(`
+// ClearTx removes all data from the registry within a transaction.
+func (r *Registry) ClearTx(tx *sql.Tx) error { return clearAll(tx) }
+
+// InsertSkill inserts a skill into the registry.
+func (r *Registry) InsertSkill(s Skill) (int64, error) { return insertSkill(r.db, s) }
+
+// InsertSkillTx inserts a skill into the registry within a transaction.
+func (r *Registry) InsertSkillTx(tx *sql.Tx, s Skill) (int64, error) { return insertSkill(tx, s) }
+
+// InsertTestScenarioTx inserts a test scenario linked to a skill within a transaction.
+func (r *Registry) InsertTestScenarioTx(tx *sql.Tx, t TestScenario) error {
+	return insertTestScenario(tx, t)
+}
+
+func clearAll(e execer) error {
+	_, err := e.Exec(`
 		DELETE FROM skill_tests;
 		DELETE FROM skill_scopes;
 		DELETE FROM skill_tags;
@@ -146,10 +171,10 @@ func (r *Registry) Clear() error {
 	return err
 }
 
-// InsertSkill inserts a skill into the registry.
-func (r *Registry) InsertSkill(s Skill) (int64, error) {
+func insertSkill(e execer, s Skill) (int64, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
-	res, err := r.db.Exec(
+	var id int64
+	err := e.QueryRow(
 		`INSERT INTO skills (path, content, name, description, package_name, package_ver, visibility, source_type, indexed_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(path) DO UPDATE SET
@@ -160,48 +185,40 @@ func (r *Registry) InsertSkill(s Skill) (int64, error) {
 			package_ver=excluded.package_ver,
 			visibility=excluded.visibility,
 			source_type=excluded.source_type,
-			indexed_at=excluded.indexed_at`,
+			indexed_at=excluded.indexed_at
+		 RETURNING id`,
 		s.Path, s.Content, nullStr(s.Name), nullStr(s.Description),
 		nullStr(s.PackageName), nullStr(s.PackageVersion),
 		s.Visibility, s.SourceType, now,
-	)
+	).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("inserting skill %s: %w", s.Path, err)
 	}
 
-	id, err := res.LastInsertId()
-	if err != nil {
-		// ON CONFLICT path: get the existing ID
-		id, err = r.getSkillIDByPath(s.Path)
-		if err != nil {
-			return 0, err
-		}
-	}
-
 	// Delete and re-insert topics, tags, scopes
-	if _, err := r.db.Exec(`DELETE FROM skill_topics WHERE skill_id = ?`, id); err != nil {
+	if _, err := e.Exec(`DELETE FROM skill_topics WHERE skill_id = ?`, id); err != nil {
 		return 0, err
 	}
-	if _, err := r.db.Exec(`DELETE FROM skill_tags WHERE skill_id = ?`, id); err != nil {
+	if _, err := e.Exec(`DELETE FROM skill_tags WHERE skill_id = ?`, id); err != nil {
 		return 0, err
 	}
-	if _, err := r.db.Exec(`DELETE FROM skill_scopes WHERE skill_id = ?`, id); err != nil {
+	if _, err := e.Exec(`DELETE FROM skill_scopes WHERE skill_id = ?`, id); err != nil {
 		return 0, err
 	}
 
 	for _, topic := range s.Topics {
-		if _, err := r.db.Exec(`INSERT INTO skill_topics (skill_id, topic) VALUES (?, ?)`, id, topic); err != nil {
+		if _, err := e.Exec(`INSERT INTO skill_topics (skill_id, topic) VALUES (?, ?)`, id, topic); err != nil {
 			return 0, err
 		}
 	}
 	for _, tag := range s.Tags {
-		if _, err := r.db.Exec(`INSERT INTO skill_tags (skill_id, tag) VALUES (?, ?)`, id, tag); err != nil {
+		if _, err := e.Exec(`INSERT INTO skill_tags (skill_id, tag) VALUES (?, ?)`, id, tag); err != nil {
 			return 0, err
 		}
 	}
 	for _, scope := range s.Scopes {
 		pt, pp := classifyScope(scope)
-		if _, err := r.db.Exec(
+		if _, err := e.Exec(
 			`INSERT INTO skill_scopes (skill_id, scope, path_prefix, pattern_type) VALUES (?, ?, ?, ?)`,
 			id, scope, pp, pt,
 		); err != nil {
@@ -212,22 +229,14 @@ func (r *Registry) InsertSkill(s Skill) (int64, error) {
 	return id, nil
 }
 
-// InsertTestScenario inserts a test scenario linked to a skill.
-func (r *Registry) InsertTestScenario(t TestScenario) error {
-	_, err := r.db.Exec(
+func insertTestScenario(e execer, t TestScenario) error {
+	_, err := e.Exec(
 		`INSERT INTO skill_tests (skill_id, name, prompt, extra_skills, criteria) VALUES (?, ?, ?, ?, ?)`,
 		t.SkillID, t.Name, t.Prompt,
 		nullStr(strings.Join(t.ExtraSkills, ",")),
 		strings.Join(t.Criteria, "\n"),
 	)
 	return err
-}
-
-// getSkillIDByPath retrieves a skill ID by path.
-func (r *Registry) getSkillIDByPath(path string) (int64, error) {
-	var id int64
-	err := r.db.QueryRow(`SELECT id FROM skills WHERE path = ?`, path).Scan(&id)
-	return id, err
 }
 
 // GetSkillByPath retrieves a skill by its path.
@@ -501,8 +510,9 @@ func (r *Registry) AllPackages() ([]PackageSummary, error) {
 		FROM skills
 		WHERE package_name IS NOT NULL
 		GROUP BY package_name, package_ver, visibility
-		ORDER BY package_name
 	`)
+	// No SQL ORDER BY: rows are collected through a map below, which discards row
+	// order, so the deterministic ordering is the sort.Slice on the result slice.
 	if err != nil {
 		return nil, err
 	}
@@ -531,6 +541,12 @@ func (r *Registry) AllPackages() ([]PackageSummary, error) {
 	for _, v := range pkgMap {
 		result = append(result, *v)
 	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Name != result[j].Name {
+			return result[i].Name < result[j].Name
+		}
+		return result[i].Version < result[j].Version
+	})
 	return result, rows.Err()
 }
 

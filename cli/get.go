@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -60,6 +63,15 @@ Use --skip-review to bypass the review step for trusted sources.`,
 }
 
 func runGet(root, url string, topics []string, skipReview bool) error {
+	// Normalize GitHub URLs before anything else
+	{
+		rawURL, err := normalizeGitHubURL(url)
+		if err != nil {
+			return err
+		}
+		url = rawURL
+	}
+
 	if !flagQuiet {
 		fmt.Fprintln(os.Stderr, styleHeader.Render("  skillex get  "))
 		fmt.Fprintf(os.Stderr, "  Fetching %s\n", styleDim.Render(url))
@@ -75,6 +87,11 @@ func runGet(root, url string, topics []string, skipReview bool) error {
 		fmt.Fprintf(os.Stderr, "  %s Fetched %d bytes\n", styleSuccess.Render("✓"), len(content))
 	}
 
+	// Reject HTML responses (e.g. directory listings, login pages)
+	if isHTMLContent(content) {
+		return fmt.Errorf("%s returned an HTML page, not a Markdown skill file; for GitHub files use the raw.githubusercontent.com URL", url)
+	}
+
 	// 2. Review (structural only — agent does semantic review)
 	if !skipReview {
 		issues := reviewContent(content)
@@ -84,18 +101,17 @@ func runGet(root, url string, topics []string, skipReview bool) error {
 			for _, iss := range issues {
 				fmt.Fprintf(os.Stderr, "  %s %s\n", styleDim.Render("•"), iss)
 			}
-			if !flagQuiet {
-				fmt.Fprint(os.Stderr, "\nProceed anyway? [y/N] ")
-				var answer string
-				fmt.Scanln(&answer)
-				if strings.ToLower(answer) != "y" {
-					return fmt.Errorf("aborted by user")
-				}
+			if flagQuiet || !stdinIsInteractive() {
+				return fmt.Errorf("safety review flagged %d issue(s); rerun interactively to confirm, or use --skip-review for trusted sources", len(issues))
 			}
-		} else {
-			if !flagQuiet {
-				fmt.Fprintf(os.Stderr, "  %s Safety review passed\n", styleSuccess.Render("✓"))
+			fmt.Fprint(os.Stderr, "\nProceed anyway? [y/N] ")
+			var answer string
+			fmt.Scanln(&answer)
+			if strings.ToLower(answer) != "y" {
+				return fmt.Errorf("aborted by user")
 			}
+		} else if !flagQuiet {
+			fmt.Fprintf(os.Stderr, "  %s Safety review passed\n", styleSuccess.Render("✓"))
 		}
 	}
 
@@ -137,8 +153,15 @@ func runGet(root, url string, topics []string, skipReview bool) error {
 	return nil
 }
 
+var httpClient = &http.Client{Timeout: 30 * time.Second}
+
 func fetchURL(url string) ([]byte, error) {
-	resp, err := http.Get(url) //nolint:gosec
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "skillex/"+Version)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -153,6 +176,50 @@ func fetchURL(url string) ([]byte, error) {
 		return nil, err
 	}
 	return data, nil
+}
+
+var errTreeURL = errors.New("github /tree/ URLs return an HTML directory listing, not a file; pass the file's raw URL (https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>) or the /blob/ URL")
+
+// normalizeGitHubURL rewrites github.com /blob/ URLs to raw.githubusercontent.com
+// and rejects /tree/ URLs. Non-GitHub URLs pass through untouched.
+func normalizeGitHubURL(url string) (string, error) {
+	rest, found := strings.CutPrefix(url, "https://github.com/")
+	if !found {
+		return url, nil
+	}
+	parts := strings.SplitN(rest, "/", 4)
+	if len(parts) < 4 {
+		return url, nil
+	}
+	switch parts[2] {
+	case "blob":
+		return "https://raw.githubusercontent.com/" + parts[0] + "/" + parts[1] + "/" + parts[3], nil
+	case "tree":
+		return "", errTreeURL
+	}
+	return url, nil
+}
+
+// isHTMLContent reports whether the payload looks like an HTML document
+// rather than a Markdown skill file.
+func isHTMLContent(content []byte) bool {
+	head := content
+	if len(head) > 512 {
+		head = head[:512]
+	}
+	head = bytes.TrimPrefix(head, []byte{0xEF, 0xBB, 0xBF}) // strip UTF-8 BOM
+	s := strings.ToLower(strings.TrimSpace(string(head)))
+	return strings.HasPrefix(s, "<!doctype html") || strings.HasPrefix(s, "<html")
+}
+
+// stdinIsInteractive reports whether stdin is a terminal; when it is not,
+// the review prompt cannot be answered and review failures are fatal.
+func stdinIsInteractive() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
 }
 
 // reviewContent performs basic structural safety checks on skill content.

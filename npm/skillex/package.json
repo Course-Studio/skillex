@@ -1,15 +1,15 @@
 {
-  "name": "@atheory-ai/skillex",
-  "version": "0.6.4",
+  "name": "@course-studio/skillex-by-jeremy",
+  "version": "0.7.0",
   "description": "Skill management for AI agents in Node.js projects",
   "license": "Apache-2.0",
-  "homepage": "https://github.com/atheory-ai/skillex#readme",
+  "homepage": "https://github.com/course-studio/skillex#readme",
   "bugs": {
-    "url": "https://github.com/atheory-ai/skillex/issues"
+    "url": "https://github.com/course-studio/skillex/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/atheory-ai/skillex"
+    "url": "https://github.com/course-studio/skillex"
   },
   "bin": {
     "skillex": "bin/skillex.js"
@@ -29,10 +29,10 @@
     "monorepo"
   ],
   "optionalDependencies": {
-    "@atheory-ai/skillex-darwin-arm64": "0.6.4",
-    "@atheory-ai/skillex-darwin-x64": "0.6.4",
-    "@atheory-ai/skillex-linux-x64": "0.6.4",
-    "@atheory-ai/skillex-linux-arm64": "0.6.4",
-    "@atheory-ai/skillex-win32-x64": "0.6.4"
+    "@course-studio/skillex-by-jeremy-darwin-arm64": "0.7.0",
+    "@course-studio/skillex-by-jeremy-darwin-x64": "0.7.0",
+    "@course-studio/skillex-by-jeremy-linux-x64": "0.7.0",
+    "@course-studio/skillex-by-jeremy-linux-arm64": "0.7.0",
+    "@course-studio/skillex-by-jeremy-win32-x64": "0.7.0"
   }
 }

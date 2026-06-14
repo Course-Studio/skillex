@@ -134,14 +134,15 @@ jobs:
       - name: Publish platform packages
         env:
           VERSION: ${{ needs.verify_release.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           tar_dir="$(realpath "${{ steps.download_tarballs.outputs.download-path }}")"
           for tarball in \
-            "$tar_dir/atheory-ai-skillex-darwin-arm64-${VERSION}.tgz" \
-            "$tar_dir/atheory-ai-skillex-darwin-x64-${VERSION}.tgz" \
-            "$tar_dir/atheory-ai-skillex-linux-arm64-${VERSION}.tgz" \
-            "$tar_dir/atheory-ai-skillex-linux-x64-${VERSION}.tgz" \
-            "$tar_dir/atheory-ai-skillex-win32-x64-${VERSION}.tgz"; do
+            "$tar_dir/course-studio-skillex-by-jeremy-darwin-arm64-${VERSION}.tgz" \
+            "$tar_dir/course-studio-skillex-by-jeremy-darwin-x64-${VERSION}.tgz" \
+            "$tar_dir/course-studio-skillex-by-jeremy-linux-arm64-${VERSION}.tgz" \
+            "$tar_dir/course-studio-skillex-by-jeremy-linux-x64-${VERSION}.tgz" \
+            "$tar_dir/course-studio-skillex-by-jeremy-win32-x64-${VERSION}.tgz"; do
             if [ ! -f "$tarball" ]; then
               echo "Missing tarball: $tarball"
               exit 1
@@ -152,9 +153,10 @@ jobs:
       - name: Publish wrapper package
         env:
           VERSION: ${{ needs.verify_release.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           tar_dir="$(realpath "${{ steps.download_tarballs.outputs.download-path }}")"
-          tarball="$tar_dir/atheory-ai-skillex-${VERSION}.tgz"
+          tarball="$tar_dir/course-studio-skillex-by-jeremy-${VERSION}.tgz"
           if [ ! -f "$tarball" ]; then
             echo "Missing tarball: $tarball"
             exit 1

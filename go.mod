@@ -1,4 +1,4 @@
-module github.com/atheory-ai/skillex
+module github.com/course-studio/skillex
 
 go 1.23
 

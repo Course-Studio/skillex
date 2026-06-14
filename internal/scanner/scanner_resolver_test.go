@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/atheory-ai/skillex/internal/config"
+	"github.com/course-studio/skillex/internal/config"
 )
 
 func TestScannerUsesResolverExports(t *testing.T) {

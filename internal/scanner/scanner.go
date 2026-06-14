@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/atheory-ai/skillex/internal/config"
-	"github.com/atheory-ai/skillex/internal/frontmatter"
+	"github.com/course-studio/skillex/internal/config"
+	"github.com/course-studio/skillex/internal/frontmatter"
 )
 
 // SkillFile represents a discovered skill file and its parsed metadata.

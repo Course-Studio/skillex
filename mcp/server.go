@@ -9,8 +9,8 @@ import (
 	mcplib "github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
-	"github.com/atheory-ai/skillex/internal/query"
-	"github.com/atheory-ai/skillex/internal/registry"
+	"github.com/course-studio/skillex/internal/query"
+	"github.com/course-studio/skillex/internal/registry"
 )
 
 // Serve starts the MCP server using stdio transport.

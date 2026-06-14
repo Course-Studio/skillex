@@ -1,5 +1,11 @@
 # Skillex
 
+> This is the Course Studio fork of [skillex](https://github.com/atheory-ai/skillex),
+> created by Jeremy (atheory.ai) — credited permanently in the package name
+> `@course-studio/skillex-by-jeremy`. The fork optimizes for Claude Code as the
+> first-class agent harness. Changes from upstream are listed in CHANGELOG.md
+> (Apache-2.0, section 4(b) change notice). The CLI command remains `skillex`.
+
 **Skill management for AI agents in Node.js projects.**
 
 Skillex solves the problem of agent skill discovery in monorepos and dependency-heavy projects. It gives agents exactly the skills they need — versioned, scoped, instantly queryable — without polluting their context window with irrelevant documentation.
@@ -90,11 +96,11 @@ That is the core difference: Skillex moves scope resolution out of the model's p
 ### npm (recommended for Node.js projects)
 
 ```bash
-npm install --save-dev @atheory-ai/skillex
+npm install --save-dev @course-studio/skillex-by-jeremy
 # or
-pnpm add -D @atheory-ai/skillex
+pnpm add -D @course-studio/skillex-by-jeremy
 # or
-yarn add -D @atheory-ai/skillex
+yarn add -D @course-studio/skillex-by-jeremy
 ```
 
 The package automatically installs the correct binary for your platform (macOS arm64/x64, Linux arm64/x64, Windows x64) via npm's `optionalDependencies` mechanism — only the binary for your OS is downloaded.
@@ -102,13 +108,13 @@ The package automatically installs the correct binary for your platform (macOS a
 ### go install
 
 ```bash
-go install github.com/atheory-ai/skillex/cmd/skillex@latest
+go install github.com/course-studio/skillex/cmd/skillex@latest
 ```
 
 ### Build from source
 
 ```bash
-git clone https://github.com/atheory-ai/skillex
+git clone https://github.com/course-studio/skillex
 cd skillex
 make build          # produces ./skillex
 make install        # installs to $GOPATH/bin
@@ -676,7 +682,7 @@ The CLI validates structure. The agent validates behavior.
 **Requirements:** Go 1.22+
 
 ```bash
-git clone https://github.com/atheory-ai/skillex
+git clone https://github.com/course-studio/skillex
 cd skillex
 
 make build      # ./skillex

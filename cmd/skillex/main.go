@@ -1,6 +1,6 @@
 package main
 
-import "github.com/atheory-ai/skillex/cli"
+import "github.com/course-studio/skillex/cli"
 
 func main() {
 	cli.Execute()

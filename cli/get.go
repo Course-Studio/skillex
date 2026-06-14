@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/atheory-ai/skillex/internal/frontmatter"
+	"github.com/course-studio/skillex/internal/frontmatter"
 )
 
 func newGetCmd() *cobra.Command {

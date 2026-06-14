@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/atheory-ai/skillex/internal/config"
-	"github.com/atheory-ai/skillex/internal/registry"
-	"github.com/atheory-ai/skillex/internal/validator"
+	"github.com/course-studio/skillex/internal/config"
+	"github.com/course-studio/skillex/internal/registry"
+	"github.com/course-studio/skillex/internal/validator"
 )
 
 func newDoctorCmd() *cobra.Command {

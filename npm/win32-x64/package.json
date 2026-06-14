@@ -1,11 +1,11 @@
 {
-  "name": "@atheory-ai/skillex-win32-x64",
-  "version": "0.6.4",
-  "description": "Windows x64 binary for @atheory-ai/skillex",
+  "name": "@course-studio/skillex-by-jeremy-win32-x64",
+  "version": "0.7.0",
+  "description": "Windows x64 binary for @course-studio/skillex-by-jeremy",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/atheory-ai/skillex"
+    "url": "https://github.com/course-studio/skillex"
   },
   "os": [
     "win32"

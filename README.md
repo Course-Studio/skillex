@@ -386,6 +386,17 @@ When `skillex/pack.yaml` is present, Skillex activates matching pack skills at
 refresh time and indexes them individually with package metadata. The existing
 `skillex/public` and `skillex/private` behavior remains supported.
 
+To ship the manifest from a non-default location, set the `pack` field in
+`package.json` (resolved relative to the package root):
+
+```json
+{
+  "skillex": {
+    "pack": "docs/skillex/pack.yaml"
+  }
+}
+```
+
 ### Custom skill directory
 
 ```json

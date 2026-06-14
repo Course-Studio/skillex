@@ -109,8 +109,13 @@ func (p *Pack) Validate() error {
 			errs = append(errs, prefix+".file is required")
 		} else if !isSafeRelativePath(skill.File) {
 			errs = append(errs, prefix+".file must be a relative path inside the pack")
-		} else if _, err := os.Stat(filepath.Join(p.Dir, skill.File)); err != nil {
+		} else if safePath, err := SafeSkillPath(p.Dir, skill.File); err != nil {
+			// Rejects symlinks (and other components) that escape the pack dir.
+			errs = append(errs, fmt.Sprintf("%s.file %q escapes the pack directory", prefix, skill.File))
+		} else if info, err := os.Stat(safePath); err != nil {
 			errs = append(errs, fmt.Sprintf("%s.file %q not found", prefix, skill.File))
+		} else if info.IsDir() {
+			errs = append(errs, fmt.Sprintf("%s.file %q is a directory, expected a file", prefix, skill.File))
 		}
 
 		if len(skill.ActivateWhen.FilesPresent) == 0 &&
@@ -132,12 +137,74 @@ func (p *Pack) Validate() error {
 	return nil
 }
 
+// IsSafeRelativePath reports whether path is a relative path that does not
+// escape its base via "..". It is a lexical check only; use SafeSkillPath to
+// also defend against symlink-based escapes.
+func IsSafeRelativePath(path string) bool {
+	return isSafeRelativePath(path)
+}
+
 func isSafeRelativePath(path string) bool {
 	if filepath.IsAbs(path) {
 		return false
 	}
 	clean := filepath.Clean(path)
 	return clean != ".." && !strings.HasPrefix(clean, ".."+string(filepath.Separator))
+}
+
+// SafeSkillPath joins a pack-relative skill file path under packDir and returns
+// the absolute path, but only if it stays inside packDir even after symlinks
+// are resolved. It rejects absolute paths, ".." escapes, and any path whose
+// real (symlink-resolved) location lies outside the pack directory.
+//
+// The returned path is the plain join (not the symlink-resolved real path) so
+// callers can compute a stable repo-relative path; the containment guarantee is
+// enforced separately via EvalSymlinks. The final component is allowed to not
+// exist (skill packs reference optional paired .test.md files): in that case the
+// deepest existing ancestor is resolved and checked.
+func SafeSkillPath(packDir, rel string) (string, error) {
+	if !isSafeRelativePath(rel) {
+		return "", fmt.Errorf("skill file %q must be a relative path inside the pack", rel)
+	}
+
+	joined := filepath.Join(packDir, filepath.FromSlash(rel))
+
+	realBase, err := filepath.EvalSymlinks(packDir)
+	if err != nil {
+		return "", fmt.Errorf("resolving pack dir %q: %w", packDir, err)
+	}
+
+	// Resolve the deepest existing portion of the joined path. A non-existent
+	// final element is fine (optional file); any existing element — including
+	// every intermediate directory — is resolved so a symlink that points
+	// outside the pack is caught.
+	probe := joined
+	for {
+		resolved, err := filepath.EvalSymlinks(probe)
+		if err == nil {
+			if !withinDir(realBase, resolved) {
+				return "", fmt.Errorf("skill file %q escapes the pack directory", rel)
+			}
+			return joined, nil
+		}
+		if !os.IsNotExist(err) {
+			return "", fmt.Errorf("resolving skill file %q: %w", rel, err)
+		}
+		parent := filepath.Dir(probe)
+		if parent == probe {
+			// Reached the filesystem root without finding an existing ancestor.
+			return "", fmt.Errorf("resolving skill file %q: %w", rel, err)
+		}
+		probe = parent
+	}
+}
+
+// withinDir reports whether target is base itself or lies inside base.
+func withinDir(base, target string) bool {
+	if target == base {
+		return true
+	}
+	return strings.HasPrefix(target, base+string(filepath.Separator))
 }
 
 // ActivateProject discovers and activates project-local packs for a repo root.

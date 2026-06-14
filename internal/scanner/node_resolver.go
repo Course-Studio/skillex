@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/course-studio/skillex/internal/packs"
 )
@@ -117,13 +118,35 @@ func (r *NodeResolver) Exports(pkg PackageRoot) ([]SkillExport, []error) {
 	if packPath == "" {
 		packPath = filepath.Join(export.Path, packs.Filename)
 	}
-	packManifestPath := filepath.Join(pkg.RootAbs, packPath)
-	if info, err := os.Stat(packManifestPath); err == nil && !info.IsDir() {
-		exports = append(exports, SkillExport{
-			Path:   packManifestPath,
-			Format: SkillExportFormatPackManifest,
-		})
+	// export.PackPath is taken verbatim from a dependency's package.json and is
+	// therefore untrusted. Reject absolute paths and ".." escapes before joining,
+	// and verify the joined path does not climb out of the package root.
+	if packManifestPath, ok := safeJoinUnderRoot(pkg.RootAbs, packPath); ok {
+		if info, err := os.Stat(packManifestPath); err == nil && !info.IsDir() {
+			exports = append(exports, SkillExport{
+				Path:   packManifestPath,
+				Format: SkillExportFormatPackManifest,
+			})
+		}
 	}
 
 	return exports, nil
+}
+
+// safeJoinUnderRoot joins rel under root and returns the result only if rel is a
+// safe relative path and the join stays within root. Used to contain untrusted
+// package.json-provided paths (e.g. skillex.pack) within the package root.
+func safeJoinUnderRoot(root, rel string) (string, bool) {
+	if !packs.IsSafeRelativePath(rel) {
+		return "", false
+	}
+	joined := filepath.Join(root, filepath.FromSlash(rel))
+	relBack, err := filepath.Rel(root, joined)
+	if err != nil {
+		return "", false
+	}
+	if relBack == ".." || strings.HasPrefix(relBack, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return joined, true
 }

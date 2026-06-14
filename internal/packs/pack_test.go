@@ -54,6 +54,92 @@ skills:
 	}
 }
 
+func TestValidateRejectsDirectoryAsFile(t *testing.T) {
+	dir := t.TempDir()
+	// "docker.md" exists as a directory, not a file.
+	if err := os.MkdirAll(filepath.Join(dir, "docker.md"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	writePackTestFile(t, filepath.Join(dir, Filename), `name: docker
+version: 1.0.0
+skills:
+  - file: docker.md
+    activate-when:
+      files-present:
+        - Dockerfile
+    scope: subtree
+`)
+
+	_, err := Load(filepath.Join(dir, Filename))
+	if err == nil {
+		t.Fatal("Load() error = nil, want directory validation error")
+	}
+	if !strings.Contains(err.Error(), `"docker.md" is a directory, expected a file`) {
+		t.Fatalf("error = %q, want directory message", err.Error())
+	}
+}
+
+func TestValidateRejectsSymlinkEscapingPackDir(t *testing.T) {
+	base := t.TempDir()
+	packDir := filepath.Join(base, "pack")
+	if err := os.MkdirAll(packDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	// A real secret file outside the pack directory.
+	outside := filepath.Join(base, "secret.md")
+	writePackTestFile(t, outside, "# Secret\n")
+
+	// docker.md inside the pack is a symlink pointing outside the pack dir.
+	link := filepath.Join(packDir, "docker.md")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlinks unsupported: %v", err)
+	}
+
+	writePackTestFile(t, filepath.Join(packDir, Filename), `name: docker
+version: 1.0.0
+skills:
+  - file: docker.md
+    activate-when:
+      files-present:
+        - Dockerfile
+    scope: subtree
+`)
+
+	_, err := Load(filepath.Join(packDir, Filename))
+	if err == nil {
+		t.Fatal("Load() error = nil, want symlink-escape validation error")
+	}
+	if !strings.Contains(err.Error(), "escapes the pack directory") {
+		t.Fatalf("error = %q, want escape message", err.Error())
+	}
+}
+
+func TestSafeSkillPathAllowsContainedFileAndOptionalMissing(t *testing.T) {
+	dir := t.TempDir()
+	writePackTestFile(t, filepath.Join(dir, "docker.md"), "# Docker\n")
+
+	got, err := SafeSkillPath(dir, "docker.md")
+	if err != nil {
+		t.Fatalf("SafeSkillPath(existing) error = %v", err)
+	}
+	if got != filepath.Join(dir, "docker.md") {
+		t.Fatalf("SafeSkillPath = %q, want joined path", got)
+	}
+
+	// A not-yet-existing paired test file is allowed (optional file).
+	got, err = SafeSkillPath(dir, "docker.test.md")
+	if err != nil {
+		t.Fatalf("SafeSkillPath(missing optional) error = %v", err)
+	}
+	if got != filepath.Join(dir, "docker.test.md") {
+		t.Fatalf("SafeSkillPath = %q, want joined path", got)
+	}
+
+	if _, err := SafeSkillPath(dir, "../escape.md"); err == nil {
+		t.Fatal("SafeSkillPath(../escape.md) error = nil, want rejection")
+	}
+}
+
 func TestProjectManifestPathsFindsSupportedLocations(t *testing.T) {
 	root := t.TempDir()
 	writePackTestFile(t, filepath.Join(root, "skillex", "root.md"), "# Root\n")

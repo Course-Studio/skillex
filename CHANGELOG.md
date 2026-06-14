@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
 
 ## [Unreleased]
 
+## [0.9.0]
+
 - **Added:** project-local and package-shipped *packs*. A `pack.yaml` manifest bundles skill files with their own activation rules (`activate-when`: `files-present` / `files-matching` / `dependency-declared`) and scope strategies (`repo` / `subtree` / `directory` / `matching-files` / `nearest-ancestor` / `boundary`). Project packs are discovered at `skillex/pack.yaml` and `skillex/packs/*/pack.yaml`; packages may ship `skillex/pack.yaml`. Pack skills are indexed with `source_type: pack`. Ported from upstream skillex (#31–#34); additive — existing `skillex.json` rules, `skillex/public`, and `skillex/private` behavior are unchanged.
 
 ## [0.8.1]

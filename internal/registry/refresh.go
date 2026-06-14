@@ -50,12 +50,22 @@ func Refresh(reg *Registry, cfg *config.Config, opts RefreshOptions) (*RefreshRe
 		}
 	}
 
-	// Build a map for test files: skillRelPath -> []SkillFile (tests)
+	// Build a map for test files: skillRelPath -> []SkillFile (tests).
+	// A single test file can be discovered more than once (e.g. a pack that
+	// lists the same skill file in several manifest entries emits its paired
+	// .test.md once per entry). Dedup by the test's own RelPath so each test
+	// scenario is inserted exactly once and TestsAdded is not inflated.
 	testMap := map[string][]scanner.SkillFile{}
+	seenTestPath := map[string]bool{}
 	for _, sf := range allSkillFiles {
-		if sf.IsTest {
-			testMap[sf.TestFor] = append(testMap[sf.TestFor], sf)
+		if !sf.IsTest {
+			continue
 		}
+		if seenTestPath[sf.RelPath] {
+			continue
+		}
+		seenTestPath[sf.RelPath] = true
+		testMap[sf.TestFor] = append(testMap[sf.TestFor], sf)
 	}
 
 	if opts.DryRun {

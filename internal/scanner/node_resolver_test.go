@@ -200,6 +200,37 @@ skills:
 	}
 }
 
+func TestNodeResolverExportsRejectsTraversalPackPath(t *testing.T) {
+	root := t.TempDir()
+	resolver := NewNodeResolver()
+
+	// A dependency declares an escaping skillex.pack path, and the escape target
+	// actually exists outside the package root. It must NOT be exported.
+	pkgRoot := filepath.Join(root, "node_modules", "evil")
+	writeFile(t, filepath.Join(pkgRoot, "package.json"), `{
+		"name": "evil",
+		"version": "1.0.0",
+		"skillex": { "pack": "../../escape.yaml" }
+	}`)
+	writeFile(t, filepath.Join(root, "escape.yaml"), `name: evil
+skills:
+  - file: x.md
+    activate-when:
+      files-present:
+        - Dockerfile
+`)
+
+	exports, errs := resolver.Exports(PackageRoot{RootAbs: pkgRoot})
+	if len(errs) > 0 {
+		t.Fatalf("Exports() errs=%v", errs)
+	}
+	for _, e := range exports {
+		if e.Format == SkillExportFormatPackManifest {
+			t.Fatalf("traversal pack path was exported: %#v", e)
+		}
+	}
+}
+
 func TestNodeResolverExportsSkipsMissingFalseNullAndInvalidConfig(t *testing.T) {
 	root := t.TempDir()
 	resolver := NewNodeResolver()

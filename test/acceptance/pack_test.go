@@ -90,6 +90,106 @@ skills:
 	}
 }
 
+func TestPack_SameFileListedTwiceMergesScopesAndInsertsTestOnce(t *testing.T) {
+	dir := helpers.CopyFixture(t, "monorepo-pnpm")
+
+	for _, sub := range []string{"services/api", "services/worker"} {
+		if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, sub, "Dockerfile"), []byte("FROM scratch\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "skillex"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The same skill file is listed in two manifest entries with different
+	// activate-when/scope. Linking must take the UNION of both scopes, and the
+	// paired .test.md must be inserted exactly once (not once per entry).
+	if err := os.WriteFile(filepath.Join(dir, "skillex", "pack.yaml"), []byte(`name: docker
+version: 1.0.0
+description: Docker guidance.
+skills:
+  - file: docker.md
+    activate-when:
+      files-matching:
+        - services/api/Dockerfile
+    scope: directory
+  - file: docker.md
+    activate-when:
+      files-matching:
+        - services/worker/Dockerfile
+    scope: directory
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "skillex", "docker.md"), []byte(`---
+name: Docker
+description: Dockerfile guidance.
+topics: [docker]
+tags: [containers]
+---
+
+# Docker
+
+Use Docker guidance from the activated pack.
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "skillex", "docker.test.md"), []byte(`# Tests: docker.md
+
+## Validation: Basic
+Prompt: "How should I build this Dockerfile?"
+Success criteria:
+  - Mentions Docker guidance
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	res := helpers.Run(t, dir, "refresh")
+	if res.ExitCode != 0 {
+		t.Fatalf("refresh failed (exit %d): %s", res.ExitCode, res.Stderr)
+	}
+
+	db := helpers.OpenRegistry(t, dir)
+
+	// Exactly one docker.md skill row (deduped), carrying the union of scopes.
+	skillRows := helpers.QuerySkillsTable(t, db)
+	dockerCount := 0
+	for _, r := range skillRows {
+		if strings.HasSuffix(r.Path, "skillex/docker.md") {
+			dockerCount++
+		}
+	}
+	if dockerCount != 1 {
+		t.Fatalf("docker.md skill rows = %d, want 1 (deduped)", dockerCount)
+	}
+
+	scopes := helpers.QueryScopesFor(t, db, "skillex/docker.md")
+	want := map[string]bool{"services/api/*": true, "services/worker/*": true}
+	if len(scopes) != len(want) {
+		t.Fatalf("scopes = %v, want union %v", scopes, want)
+	}
+	for _, s := range scopes {
+		if !want[s] {
+			t.Fatalf("unexpected scope %q in %v, want union %v", s, scopes, want)
+		}
+	}
+
+	// The skill is visible from BOTH activated directories (union, not keep-first).
+	apiSkills := queryResults(t, dir, "--path", "services/api/Dockerfile", "--topic", "docker", "--format", "summary")
+	helpers.AssertSkillPresent(t, apiSkills, "docker.md")
+	workerSkills := queryResults(t, dir, "--path", "services/worker/Dockerfile", "--topic", "docker", "--format", "summary")
+	helpers.AssertSkillPresent(t, workerSkills, "docker.md")
+
+	// The paired test scenario is inserted exactly once.
+	tests := helpers.QueryTestsFor(t, db, "skillex/docker.md")
+	if len(tests) != 1 {
+		t.Fatalf("test scenarios for docker.md = %d, want 1 (deduped)", len(tests))
+	}
+}
+
 func TestPack_NodeDependencyShippedPackActivation(t *testing.T) {
 	dir := helpers.CopyFixture(t, "monorepo-pnpm")
 

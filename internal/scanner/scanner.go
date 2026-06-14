@@ -201,6 +201,10 @@ func (s *Scanner) scanDependencyPack(manifestPath string, boundary Boundary, pkg
 		},
 	}
 
+	// A pack may list the same skill file under several manifest entries; its
+	// paired .test.md must be emitted only once per unique path.
+	seenTest := map[string]bool{}
+
 	for _, skill := range pack.Manifest.Skills {
 		scopes, err := packs.ActivateSkillWithContext(s.root, skill, ctx)
 		if err != nil {
@@ -211,7 +215,11 @@ func (s *Scanner) scanDependencyPack(manifestPath string, boundary Boundary, pkg
 			continue
 		}
 
-		absPath := filepath.Join(pack.Dir, skill.File)
+		absPath, err := packs.SafeSkillPath(pack.Dir, skill.File)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("pack %s skill %s: %w", pack.Manifest.Name, skill.File, err))
+			continue
+		}
 		relPath, _ := filepath.Rel(s.root, absPath)
 		sfs, err := s.readSkillFileWithScopes(
 			absPath,
@@ -230,8 +238,17 @@ func (s *Scanner) scanDependencyPack(manifestPath string, boundary Boundary, pkg
 		}
 		skills = append(skills, sfs...)
 
-		testAbsPath := strings.TrimSuffix(absPath, ".md") + ".test.md"
+		testRel := strings.TrimSuffix(skill.File, ".md") + ".test.md"
+		testAbsPath, err := packs.SafeSkillPath(pack.Dir, testRel)
+		if err != nil {
+			// Derived test path escapes the pack dir; skip rather than read it.
+			continue
+		}
 		testRelPath, _ := filepath.Rel(s.root, testAbsPath)
+		if seenTest[testRelPath] {
+			continue
+		}
+		seenTest[testRelPath] = true
 		testSfs, err := s.readSkillFileWithScopes(
 			testAbsPath,
 			filepath.ToSlash(testRelPath),
@@ -339,12 +356,21 @@ func (s *Scanner) readSkillFileWithScopes(absPath, relPath, pkgName, pkgVersion,
 func (s *Scanner) scanProjectPacks() ([]SkillFile, []error) {
 	var skills []SkillFile
 
+	// A pack may list the same skill file in several manifest entries (with
+	// different activate-when/scope). Its paired .test.md must be emitted only
+	// once per unique path so the test scenario is not inserted multiple times.
+	seenTest := map[string]bool{}
+
 	activated, errs := packs.ActivateProject(s.root)
 	for _, activation := range activated {
-		absPath := filepath.Join(activation.Pack.Dir, activation.Skill.File)
-		relPath, _ := filepath.Rel(s.root, absPath)
+		safeAbs, err := packs.SafeSkillPath(activation.Pack.Dir, activation.Skill.File)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("pack %s skill %s: %w", activation.Pack.Manifest.Name, activation.Skill.File, err))
+			continue
+		}
+		relPath, _ := filepath.Rel(s.root, safeAbs)
 		sfs, err := s.readSkillFileWithScopes(
-			absPath,
+			safeAbs,
 			filepath.ToSlash(relPath),
 			"",
 			"",
@@ -360,8 +386,18 @@ func (s *Scanner) scanProjectPacks() ([]SkillFile, []error) {
 		}
 		skills = append(skills, sfs...)
 
-		testAbsPath := strings.TrimSuffix(absPath, ".md") + ".test.md"
+		testRel := strings.TrimSuffix(activation.Skill.File, ".md") + ".test.md"
+		testAbsPath, err := packs.SafeSkillPath(activation.Pack.Dir, testRel)
+		if err != nil {
+			// The derived test path escapes the pack dir (e.g. via a symlink);
+			// skip it rather than reading outside the pack.
+			continue
+		}
 		testRelPath, _ := filepath.Rel(s.root, testAbsPath)
+		if seenTest[testRelPath] {
+			continue
+		}
+		seenTest[testRelPath] = true
 		testSfs, err := s.readSkillFileWithScopes(
 			testAbsPath,
 			filepath.ToSlash(testRelPath),

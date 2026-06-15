@@ -134,7 +134,7 @@ This creates:
 - `skillex.json` — configuration file (default)
 - `skills/repo.md` — a starter repo-wide skill
 - `AGENTS.md` — auto-generated agent instructions (MCP + CLI)
-- `.skillex/index.db` — the registry (gitignored; auto-built on demand by `query`/`mcp`, rebuilt by `refresh`)
+- `.skillex/index.db` — the registry (a derived build artifact; gitignore `.skillex/`; auto-built on demand by `query`/`mcp`, rebuilt by `refresh`)
 
 To also configure MCP for your agent harness:
 

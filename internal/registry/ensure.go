@@ -153,16 +153,17 @@ func installIndex(tmpPath, dbPath string) (*Registry, error) {
 		dropStaleSidecars(dbPath)
 		return Open(dbPath)
 	}
-	// Rename failed. A concurrent process may have installed a populated index
-	// first (its open handle blocks our rename on Windows). Use it ONLY if it
-	// actually contains data — Open() auto-creates an empty DB on a missing path,
-	// so Open-success alone does not prove a healthy peer exists.
-	if reg, openErr := Open(dbPath); openErr == nil {
-		if n, _ := reg.SkillCount(); n > 0 {
+	// Rename failed. A concurrent process may have installed the index first (its
+	// open handle blocks our rename on Windows). Adopt an existing peer index ONLY
+	// when dbPath already exists on disk — Open() auto-creates an empty stub on a
+	// missing path, which would otherwise mask a genuine install failure as a
+	// healthy (but empty) index. File existence, not skill count, is the right
+	// discriminator: a legitimately empty repo yields a valid 0-skill peer.
+	if _, statErr := os.Stat(dbPath); statErr == nil {
+		if reg, openErr := Open(dbPath); openErr == nil {
 			removeDBFiles(tmpPath)
 			return reg, nil
 		}
-		reg.Close() //nolint:errcheck // discard the auto-created empty DB before retrying
 	}
 	// No usable index present — clear the destination and retry once.
 	removeDBFiles(dbPath)

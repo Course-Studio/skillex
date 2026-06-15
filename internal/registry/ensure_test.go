@@ -188,7 +188,10 @@ func TestEnsureIndex_ConcurrentColdStart(t *testing.T) {
 			t.Errorf("concurrent EnsureIndex returned error: %v", o.err)
 			continue
 		}
-		// A cold-start race must never expose a half-built index to any caller.
+		// Every successful concurrent open must see the FULLY-built index (count 3),
+		// never a partial one. WAL gives readers a consistent snapshot, so this check
+		// only ever observes fully-built states; the real mid-flight protection is the
+		// build-into-temp + atomic rename in installIndex.
 		if o.count != 3 {
 			t.Errorf("concurrent EnsureIndex returned a registry with %d skills, want 3", o.count)
 		}
@@ -288,6 +291,45 @@ func TestInstallIndex_UsesPeerIndexWhenRenameFails(t *testing.T) {
 	}
 	if _, statErr := os.Stat(tmpPath); !os.IsNotExist(statErr) {
 		t.Errorf("temp index should be discarded after recovery")
+	}
+}
+
+// A legitimately empty (0-skill) peer index is still a healthy peer: when a rename
+// fails and an index already exists on disk, it must be adopted regardless of skill
+// count (an empty repo is valid). The peer must be distinguished from the empty stub
+// Open() would auto-create on a missing path by checking file existence, not count.
+func TestInstallIndex_AdoptsZeroSkillPeerWhenRenameFails(t *testing.T) {
+	root := writeIndexTestRepo(t) // empty Skills list → a real 0-skill index
+	dbDir := filepath.Join(root, ".skillex")
+	dbPath := filepath.Join(dbDir, "index.db")
+
+	peer, err := EnsureIndex(root, io.Discard)
+	if err != nil {
+		t.Fatalf("peer build: %v", err)
+	}
+	if n, _ := peer.SkillCount(); n != 0 {
+		t.Fatalf("precondition: peer should have 0 skills, got %d", n)
+	}
+	peer.Close()
+
+	tmp, err := os.CreateTemp(dbDir, "index-*.db.tmp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpPath := tmp.Name()
+	tmp.Close()
+
+	orig := osRename
+	osRename = func(_, _ string) error { return fmt.Errorf("simulated sharing violation") }
+	defer func() { osRename = orig }()
+
+	reg, err := installIndex(tmpPath, dbPath)
+	if err != nil {
+		t.Fatalf("installIndex should adopt the existing 0-skill peer, got: %v", err)
+	}
+	defer reg.Close()
+	if n, _ := reg.SkillCount(); n != 0 {
+		t.Errorf("adopted index SkillCount = %d, want 0", n)
 	}
 }
 

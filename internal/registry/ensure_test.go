@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // writeIndexTestRepo creates a temp repo with a skillex.json listing the named
@@ -317,5 +319,163 @@ func TestEnsureIndex_OptOutDoesNotRebuildCorrupt(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(dbPath); string(got) != string(garbage) {
 		t.Errorf("opt-out must not modify the corrupt index on disk")
+	}
+}
+
+// A transient rename failure with NO peer index present must still install the
+// freshly built index — not return an empty one. (Open() auto-creates an empty DB
+// on a missing path, so an Open-success in the recovery branch does not prove a
+// healthy peer exists.)
+func TestEnsureIndex_RenameFailureWithoutPeerStillBuildsFullIndex(t *testing.T) {
+	root := writeIndexTestRepo(t, "a", "b", "c")
+
+	calls := 0
+	orig := osRename
+	osRename = func(from, to string) error {
+		calls++
+		if calls == 1 {
+			return fmt.Errorf("simulated transient rename failure")
+		}
+		return orig(from, to)
+	}
+	defer func() { osRename = orig }()
+
+	reg, err := EnsureIndex(root, io.Discard)
+	if err != nil {
+		t.Fatalf("EnsureIndex: %v", err)
+	}
+	defer reg.Close()
+	if n, _ := reg.SkillCount(); n != 3 {
+		t.Errorf("SkillCount = %d, want 3 (a transient rename failure with no peer must not yield an empty index)", n)
+	}
+}
+
+// A stale leftover WAL sidecar next to a missing index.db must not be replayed onto
+// the freshly built index (which would inject phantom rows).
+func TestEnsureIndex_DiscardsStaleWALSidecar(t *testing.T) {
+	// Build a donor DB with an uncheckpointed committed "phantom" row living in
+	// its WAL, and snapshot the sidecars before they are checkpointed away.
+	donor := filepath.Join(t.TempDir(), "index.db")
+	db, err := sql.Open("sqlite", donor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	for _, p := range []string{"PRAGMA journal_mode=WAL", "PRAGMA wal_autocheckpoint=0"} {
+		if _, err := db.Exec(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(schema); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO skills(path,content,visibility,source_type,indexed_at) VALUES('PHANTOM.md','x','public','repo','t')`); err != nil {
+		t.Fatal(err)
+	}
+	walBytes, err := os.ReadFile(donor + "-wal")
+	if err != nil || len(walBytes) == 0 {
+		t.Fatalf("expected a non-empty donor WAL: err=%v len=%d", err, len(walBytes))
+	}
+	shmBytes, _ := os.ReadFile(donor + "-shm")
+	db.Close()
+
+	// Place the leftover sidecars beside a MISSING main index in a real repo.
+	root := writeIndexTestRepo(t, "a")
+	dbPath := filepath.Join(root, ".skillex", "index.db")
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dbPath+"-wal", walBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if len(shmBytes) > 0 {
+		_ = os.WriteFile(dbPath+"-shm", shmBytes, 0o644)
+	}
+
+	reg, err := EnsureIndex(root, io.Discard)
+	if err != nil {
+		t.Fatalf("EnsureIndex: %v", err)
+	}
+	defer reg.Close()
+
+	var phantom int
+	if err := reg.db.QueryRow(`SELECT COUNT(*) FROM skills WHERE path='PHANTOM.md'`).Scan(&phantom); err != nil {
+		t.Fatal(err)
+	}
+	if phantom != 0 {
+		t.Errorf("stale WAL was replayed onto the freshly built index (phantom row present)")
+	}
+	if n, _ := reg.SkillCount(); n != 1 {
+		t.Errorf("SkillCount = %d, want 1 (only the real skill, no phantom)", n)
+	}
+}
+
+// EnsureIndex must serve an existing healthy index as-is even when the sources
+// changed after it was built — it is not a staleness gate (`refresh --check` is).
+func TestEnsureIndex_ServesStaleIndexWithoutRebuild(t *testing.T) {
+	root := writeIndexTestRepo(t, "a")
+
+	reg, err := EnsureIndex(root, io.Discard)
+	if err != nil {
+		t.Fatalf("initial build: %v", err)
+	}
+	// Marker row that a rebuild (ClearTx) would wipe.
+	if _, err := reg.db.Exec(
+		`INSERT INTO skills (path, content, visibility, source_type, indexed_at)
+		 VALUES ('MARKER.md', 'x', 'public', 'repo', 'm')`,
+	); err != nil {
+		t.Fatalf("inserting marker: %v", err)
+	}
+	reg.Close()
+
+	// Change sources after the build — the index is now stale.
+	writeSkillFixture(t, filepath.Join(root, "skills", "a.md"), "A2", "beta")
+
+	reg2, err := EnsureIndex(root, io.Discard)
+	if err != nil {
+		t.Fatalf("second EnsureIndex: %v", err)
+	}
+	defer reg2.Close()
+	var n int
+	if err := reg2.db.QueryRow(`SELECT COUNT(*) FROM skills WHERE path = 'MARKER.md'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("a stale-but-healthy index must be served as-is (marker gone → it was rebuilt)")
+	}
+}
+
+// An interrupted build's orphaned temp is reaped on the next build, but a fresh
+// temp (a concurrent peer's in-flight build) must be left alone.
+func TestEnsureIndex_SweepsStaleTempButKeepsFresh(t *testing.T) {
+	root := writeIndexTestRepo(t, "a")
+	dbDir := filepath.Join(root, ".skillex")
+	if err := os.MkdirAll(dbDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(dbDir, "index-STALE.db.tmp")
+	fresh := filepath.Join(dbDir, "index-FRESH.db.tmp")
+	if err := os.WriteFile(stale, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fresh, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	if err := os.Chtimes(stale, old, old); err != nil {
+		t.Fatal(err)
+	}
+
+	reg, err := EnsureIndex(root, io.Discard) // missing index → builds → sweeps
+	if err != nil {
+		t.Fatalf("EnsureIndex: %v", err)
+	}
+	defer reg.Close()
+
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Errorf("stale temp index (>1h old) should have been swept")
+	}
+	if _, err := os.Stat(fresh); err != nil {
+		t.Errorf("fresh temp index must not be swept (a concurrent peer may be using it): %v", err)
 	}
 }

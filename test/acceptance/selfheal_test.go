@@ -20,6 +20,15 @@ const threeSkillConfig = `{
   ]
 }`
 
+// warnConfig references a skill file that does not exist (skills/ghost.md),
+// producing a best-effort build warning alongside the three real skills.
+const warnConfig = `{
+  "Version": 4,
+  "Rules": [
+    {"Scope": "**", "Skills": ["skills/a.md", "skills/b.md", "skills/c.md", "skills/ghost.md"]}
+  ]
+}`
+
 // query auto-builds a missing index instead of erroring.
 func TestQuery_AutoBuildsMissingIndex(t *testing.T) {
 	dir := writeCorruptionFixture(t, threeSkillConfig)
@@ -44,7 +53,9 @@ func TestQuery_AutoBuildsMissingIndex(t *testing.T) {
 // mcp auto-builds a missing index AND keeps the JSON-RPC stdout stream byte-clean
 // (build progress must go to stderr only).
 func TestMCP_AutoBuildsMissingIndexWithCleanStdout(t *testing.T) {
-	dir := writeCorruptionFixture(t, threeSkillConfig)
+	// warnConfig also triggers a build warning, so this exercises BOTH the build
+	// notice and the FormatErrors warning stream over the stdout/stderr split.
+	dir := writeCorruptionFixture(t, warnConfig)
 	if _, err := os.Stat(filepath.Join(dir, ".skillex", "index.db")); !os.IsNotExist(err) {
 		t.Fatalf("precondition: index should be missing, got %v", err)
 	}
@@ -108,6 +119,17 @@ func TestMCP_AutoBuildsMissingIndexWithCleanStdout(t *testing.T) {
 	// 3. The index now exists on disk.
 	if _, err := os.Stat(filepath.Join(dir, ".skillex", "index.db")); err != nil {
 		t.Errorf("index should exist after mcp auto-build: %v", err)
+	}
+
+	// 4. Build progress AND the skill-skip warning go to stderr — never stdout.
+	if !strings.Contains(stderrBuf.String(), "building index") {
+		t.Errorf("expected build progress on stderr, got: %q", stderrBuf.String())
+	}
+	if !strings.Contains(stderrBuf.String(), "ghost") {
+		t.Errorf("expected the missing-skill warning on stderr, got: %q", stderrBuf.String())
+	}
+	if strings.Contains(string(out), "ghost") {
+		t.Errorf("warning text leaked onto stdout (must be stderr-only):\n%s", out)
 	}
 }
 

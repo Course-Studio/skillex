@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/course-studio/skillex/internal/config"
 )
@@ -87,12 +88,14 @@ func buildIndex(root, dbPath string, progress io.Writer, reason string) (*Regist
 	if err != nil {
 		return nil, err
 	}
-	fmt.Fprintf(progress, "skillex: %s (%s)\n", reason, filepath.Join(".skillex", "index.db"))
+	// Show the path relative to root (".skillex/index.db") derived from dbPath.
+	fmt.Fprintf(progress, "skillex: %s (%s)\n", reason, filepath.Join(filepath.Base(filepath.Dir(dbPath)), filepath.Base(dbPath)))
 
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("creating registry directory: %w", err)
 	}
+	sweepStaleTempIndexes(dir)
 
 	tmp, err := os.CreateTemp(dir, "index-*.db.tmp")
 	if err != nil {
@@ -144,16 +147,24 @@ func buildIndex(root, dbPath string, progress io.Writer, reason string) (*Regist
 // file and retry once.
 func installIndex(tmpPath, dbPath string) (*Registry, error) {
 	if err := osRename(tmpPath, dbPath); err == nil {
+		// The renamed-in database is self-contained. Drop any stale sidecars left
+		// beside the destination (e.g. an orphaned -wal from a killed session) so
+		// SQLite cannot replay a foreign WAL onto the freshly installed index.
+		dropStaleSidecars(dbPath)
 		return Open(dbPath)
 	}
-	// Rename failed. A concurrent process may have installed the index first (its
-	// open handle blocks our rename on Windows). If a healthy index is now present,
-	// use it and drop our temp.
+	// Rename failed. A concurrent process may have installed a populated index
+	// first (its open handle blocks our rename on Windows). Use it ONLY if it
+	// actually contains data — Open() auto-creates an empty DB on a missing path,
+	// so Open-success alone does not prove a healthy peer exists.
 	if reg, openErr := Open(dbPath); openErr == nil {
-		removeDBFiles(tmpPath)
-		return reg, nil
+		if n, _ := reg.SkillCount(); n > 0 {
+			removeDBFiles(tmpPath)
+			return reg, nil
+		}
+		reg.Close() //nolint:errcheck // discard the auto-created empty DB before retrying
 	}
-	// Otherwise a stale/leftover file is blocking the rename — clear it and retry.
+	// No usable index present — clear the destination and retry once.
 	removeDBFiles(dbPath)
 	if err := osRename(tmpPath, dbPath); err != nil {
 		return nil, fmt.Errorf("installing built index: %w", err)
@@ -164,7 +175,30 @@ func installIndex(tmpPath, dbPath string) (*Registry, error) {
 // removeDBFiles deletes the SQLite database at dbPath and its WAL/SHM/journal
 // sidecars, ignoring missing-file errors.
 func removeDBFiles(dbPath string) {
-	for _, p := range []string{dbPath, dbPath + "-wal", dbPath + "-shm", dbPath + "-journal"} {
-		_ = os.Remove(p)
+	_ = os.Remove(dbPath)
+	dropStaleSidecars(dbPath)
+}
+
+// dropStaleSidecars removes the WAL/SHM/journal sidecars beside dbPath, ignoring
+// missing-file errors.
+func dropStaleSidecars(dbPath string) {
+	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
+		_ = os.Remove(dbPath + suffix)
+	}
+}
+
+// sweepStaleTempIndexes best-effort removes orphaned build temp databases left by
+// an interrupted build (SIGKILL/power-loss between CreateTemp and install). Only
+// clearly-stale temps (untouched for over an hour) are reaped, so a concurrent
+// peer's in-flight build temp is never removed.
+func sweepStaleTempIndexes(dir string) {
+	matches, err := filepath.Glob(filepath.Join(dir, "index-*.db.tmp*"))
+	if err != nil {
+		return
+	}
+	for _, m := range matches {
+		if fi, err := os.Stat(m); err == nil && time.Since(fi.ModTime()) > time.Hour {
+			_ = os.Remove(m)
+		}
 	}
 }

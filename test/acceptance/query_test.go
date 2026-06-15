@@ -2,6 +2,8 @@ package acceptance
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -369,8 +371,12 @@ func TestQuery_NoRegistryError(t *testing.T) {
 	if res.ExitCode == 0 {
 		t.Error("expected non-zero exit code when registry missing and auto-refresh disabled")
 	}
-	if !strings.Contains(res.Stderr, "refresh") {
-		t.Errorf("expected 'refresh' guidance in stderr, got: %q", res.Stderr)
+	want := "registry not found — run 'skillex refresh' first"
+	if !strings.Contains(res.Stderr, want) {
+		t.Errorf("expected exact legacy error %q in stderr, got: %q", want, res.Stderr)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".skillex", "index.db")); !os.IsNotExist(err) {
+		t.Errorf("opt-out must not create the index")
 	}
 }
 

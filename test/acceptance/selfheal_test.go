@@ -45,6 +45,9 @@ func TestQuery_AutoBuildsMissingIndex(t *testing.T) {
 // (build progress must go to stderr only).
 func TestMCP_AutoBuildsMissingIndexWithCleanStdout(t *testing.T) {
 	dir := writeCorruptionFixture(t, threeSkillConfig)
+	if _, err := os.Stat(filepath.Join(dir, ".skillex", "index.db")); !os.IsNotExist(err) {
+		t.Fatalf("precondition: index should be missing, got %v", err)
+	}
 
 	cmd := exec.Command(helpers.SkilexBinary(), "mcp")
 	cmd.Dir = dir
@@ -137,5 +140,27 @@ func TestEdge_ConcurrentColdStartQuery(t *testing.T) {
 	res := helpers.RunJSON(t, dir, &q, "query", "--topic", "topic-a", "--json")
 	if res.ExitCode != 0 || len(q.Results) != 1 || q.Results[0].Path != "skills/a.md" {
 		t.Fatalf("final query after concurrent cold start: exit %d, got %+v\nstderr: %s", res.ExitCode, q, res.Stderr)
+	}
+}
+
+// With opt-out set, mcp does NOT auto-build and preserves its exact legacy error
+// (which, unlike query's, includes the index path).
+func TestMCP_OptOutErrorsOnMissingIndex(t *testing.T) {
+	t.Setenv("SKILLEX_NO_AUTO_REFRESH", "1")
+	dir := writeCorruptionFixture(t, threeSkillConfig)
+	dbPath := filepath.Join(dir, ".skillex", "index.db")
+
+	// EnsureIndex returns the sentinel before the server starts reading stdin, so
+	// `mcp` exits immediately without a handshake.
+	res := helpers.Run(t, dir, "mcp")
+	if res.ExitCode == 0 {
+		t.Error("mcp should fail on a missing index when auto-refresh is disabled")
+	}
+	want := "registry not found at " + dbPath + " — run 'skillex refresh' first"
+	if !strings.Contains(res.Stderr, want) {
+		t.Errorf("mcp opt-out error: want %q in stderr, got: %q", want, res.Stderr)
+	}
+	if _, err := os.Stat(dbPath); !os.IsNotExist(err) {
+		t.Errorf("opt-out must not create the index")
 	}
 }

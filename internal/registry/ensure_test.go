@@ -3,9 +3,11 @@ package registry
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -197,5 +199,123 @@ func TestEnsureIndex_ConcurrentColdStart(t *testing.T) {
 	defer reg.Close()
 	if n, _ := reg.SkillCount(); n != 3 {
 		t.Errorf("final SkillCount = %d, want 3", n)
+	}
+}
+
+// A build must not announce "building"/"rebuilding" before config is confirmed to
+// load — otherwise a config-less directory prints a contradictory build line right
+// before failing with "run skillex init".
+func TestEnsureIndex_NoBuildMessageWhenConfigMissing(t *testing.T) {
+	root := t.TempDir() // no skillex.json, no skills
+
+	var progress strings.Builder
+	reg, err := EnsureIndex(root, &progress)
+	if reg != nil {
+		reg.Close()
+		t.Fatal("expected no registry when config is missing")
+	}
+	if err == nil {
+		t.Fatal("expected an error when config is missing")
+	}
+	if strings.Contains(progress.String(), "building") || strings.Contains(progress.String(), "rebuilding") {
+		t.Errorf("must not announce a build before config is confirmed; progress was: %q", progress.String())
+	}
+}
+
+// Best-effort scanner warnings (e.g. a configured skill file missing from disk)
+// must be surfaced during auto-build, matching `skillex refresh` — not silently
+// dropped.
+func TestEnsureIndex_SurfacesRefreshWarnings(t *testing.T) {
+	root := t.TempDir()
+	writeSkillFixture(t, filepath.Join(root, "skills", "a.md"), "A", "alpha")
+	cfg := map[string]any{
+		"Version": 4,
+		"Rules":   []map[string]any{{"Scope": "**", "Skills": []string{"skills/a.md", "skills/ghost.md"}}},
+	}
+	data, _ := json.MarshalIndent(cfg, "", "  ")
+	if err := os.WriteFile(filepath.Join(root, "skillex.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var progress strings.Builder
+	reg, err := EnsureIndex(root, &progress)
+	if err != nil {
+		t.Fatalf("EnsureIndex: %v", err)
+	}
+	defer reg.Close()
+	if !strings.Contains(progress.String(), "ghost") {
+		t.Errorf("expected a warning about the missing skill on progress, got: %q", progress.String())
+	}
+}
+
+// On Windows a concurrent cold start can fail to rename over an index.db that a
+// peer process holds open. EnsureIndex must recover by using the peer-installed
+// index rather than erroring.
+func TestInstallIndex_UsesPeerIndexWhenRenameFails(t *testing.T) {
+	root := writeIndexTestRepo(t, "a", "b")
+	dbDir := filepath.Join(root, ".skillex")
+	dbPath := filepath.Join(dbDir, "index.db")
+
+	// A peer has already installed a healthy 2-skill index at dbPath.
+	peer, err := EnsureIndex(root, io.Discard)
+	if err != nil {
+		t.Fatalf("peer build: %v", err)
+	}
+	peer.Close()
+
+	// A throwaway temp DB to "install".
+	tmp, err := os.CreateTemp(dbDir, "index-*.db.tmp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpPath := tmp.Name()
+	tmp.Close()
+
+	// Simulate Windows: rename onto the peer-held dbPath fails.
+	orig := osRename
+	osRename = func(_, _ string) error { return fmt.Errorf("simulated sharing violation") }
+	defer func() { osRename = orig }()
+
+	reg, err := installIndex(tmpPath, dbPath)
+	if err != nil {
+		t.Fatalf("installIndex should recover via the peer index, got: %v", err)
+	}
+	defer reg.Close()
+	if n, _ := reg.SkillCount(); n != 2 {
+		t.Errorf("recovered SkillCount = %d, want 2 (should use the peer index)", n)
+	}
+	if _, statErr := os.Stat(tmpPath); !os.IsNotExist(statErr) {
+		t.Errorf("temp index should be discarded after recovery")
+	}
+}
+
+// Opt-out must not rebuild or delete a corrupt index, and the error must report
+// the open failure (not the misleading "registry not found" used for a genuinely
+// missing index).
+func TestEnsureIndex_OptOutDoesNotRebuildCorrupt(t *testing.T) {
+	t.Setenv("SKILLEX_NO_AUTO_REFRESH", "1")
+	root := writeIndexTestRepo(t, "foo")
+	dbPath := filepath.Join(root, ".skillex", "index.db")
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	garbage := []byte("not a sqlite database at all")
+	if err := os.WriteFile(dbPath, garbage, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	reg, err := EnsureIndex(root, io.Discard)
+	if reg != nil {
+		reg.Close()
+		t.Fatal("opt-out must not rebuild a corrupt index")
+	}
+	if err == nil {
+		t.Fatal("expected an error for a corrupt index under opt-out")
+	}
+	if errors.Is(err, ErrAutoRefreshDisabled) {
+		t.Errorf("a corrupt (present) index under opt-out should report the open failure, not the missing-index sentinel; got %v", err)
+	}
+	if got, _ := os.ReadFile(dbPath); string(got) != string(garbage) {
+		t.Errorf("opt-out must not modify the corrupt index on disk")
 	}
 }

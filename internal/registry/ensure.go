@@ -11,9 +11,9 @@ import (
 	"github.com/course-studio/skillex/internal/config"
 )
 
-// ErrAutoRefreshDisabled is returned by EnsureIndex when the index needs to be
-// built but auto-build is disabled via SKILLEX_NO_AUTO_REFRESH. Callers map it to
-// their own "registry not found — run 'skillex refresh' first" message.
+// ErrAutoRefreshDisabled is returned by EnsureIndex when the index is missing but
+// auto-build is disabled via SKILLEX_NO_AUTO_REFRESH. Callers map it to their own
+// "registry not found — run 'skillex refresh' first" message.
 var ErrAutoRefreshDisabled = errors.New("registry missing and auto-refresh disabled (SKILLEX_NO_AUTO_REFRESH)")
 
 // autoRefreshEnvVar is the opt-out switch: set it to a truthy value to disable
@@ -21,38 +21,46 @@ var ErrAutoRefreshDisabled = errors.New("registry missing and auto-refresh disab
 // refresh first" behavior).
 const autoRefreshEnvVar = "SKILLEX_NO_AUTO_REFRESH"
 
+// osRename is a seam so tests can simulate a failing rename (e.g. the Windows
+// sharing violation when a peer process holds the destination index open).
+var osRename = os.Rename
+
 // EnsureIndex opens the skillex registry at <root>/.skillex/index.db, building it
-// on demand when it is missing. Reused by the runtime commands (query, mcp) so
-// skillex works in a fresh checkout or git worktree without a manual
-// `skillex refresh` first. A healthy existing index is opened as-is — EnsureIndex
-// does not rebuild a stale index (`skillex refresh --check` remains the staleness
-// gate). Build progress is written to progress, which callers MUST set to
+// on demand when it is missing or unreadable. Reused by the runtime commands
+// (query, mcp) so skillex works in a fresh checkout or git worktree without a
+// manual `skillex refresh` first. A healthy existing index is opened as-is —
+// EnsureIndex does not rebuild a stale index (`skillex refresh --check` remains the
+// staleness gate). Build progress is written to progress, which callers MUST set to
 // os.Stderr (never os.Stdout) so the mcp JSON-RPC stream stays byte-clean.
+//
+// Auto-build is skipped when SKILLEX_NO_AUTO_REFRESH is set to a truthy value: a
+// missing index then yields ErrAutoRefreshDisabled, and an existing-but-unreadable
+// index yields the underlying open error.
 func EnsureIndex(root string, progress io.Writer) (*Registry, error) {
 	if progress == nil {
 		progress = io.Discard
 	}
 	dbPath := filepath.Join(root, ".skillex", "index.db")
 
-	if _, err := os.Stat(dbPath); err == nil {
+	if _, statErr := os.Stat(dbPath); statErr == nil {
 		// Index exists — open and use it as-is, without rebuilding.
-		if reg, openErr := Open(dbPath); openErr == nil {
+		reg, openErr := Open(dbPath)
+		if openErr == nil {
 			return reg, nil
 		}
-		// Exists but unopenable (corrupt): rebuild it, unless opted out.
+		// Exists but unreadable (corrupt).
 		if autoRefreshDisabled() {
-			return nil, ErrAutoRefreshDisabled
+			return nil, fmt.Errorf("opening registry: %w — run 'skillex refresh' first", openErr)
 		}
-		fmt.Fprintln(progress, "skillex: index unreadable — rebuilding "+filepath.Join(".skillex", "index.db"))
 		removeDBFiles(dbPath)
-	} else if autoRefreshDisabled() {
-		// Missing index and auto-build disabled: preserve legacy behavior.
-		return nil, ErrAutoRefreshDisabled
-	} else {
-		fmt.Fprintln(progress, "skillex: index not found — building "+filepath.Join(".skillex", "index.db")+" (set SKILLEX_NO_AUTO_REFRESH=1 to disable)")
+		return buildIndex(root, dbPath, progress, "rebuilding unreadable index")
 	}
 
-	return buildIndex(root, dbPath, progress)
+	// Index missing.
+	if autoRefreshDisabled() {
+		return nil, ErrAutoRefreshDisabled
+	}
+	return buildIndex(root, dbPath, progress, "building index")
 }
 
 // autoRefreshDisabled reports whether on-demand index building is turned off via
@@ -67,15 +75,19 @@ func autoRefreshDisabled() bool {
 
 // buildIndex loads config and builds the index for root, returning an open
 // registry. It reuses the transactional Refresh builder, building into a uniquely
-// named temp database and then atomically renaming it into place at dbPath. The
-// build-then-swap keeps concurrent cold starts safe: another process sees either
-// no index yet (and builds its own) or the fully-built index — never a half-built
-// database. Build progress goes to progress (stderr), never stdout.
-func buildIndex(root, dbPath string, progress io.Writer) (*Registry, error) {
+// named temp database and then installing it at dbPath (see installIndex). The
+// build-then-install keeps concurrent cold starts safe: another process sees
+// either no index yet (and builds its own) or the fully-built index — never a
+// half-built database. reason ("building index" / "rebuilding unreadable index")
+// is announced to progress only after config loads, so a config-less directory
+// never sees a build line before the "run skillex init" error. All progress goes
+// to progress (stderr), never stdout.
+func buildIndex(root, dbPath string, progress io.Writer, reason string) (*Registry, error) {
 	cfg, err := config.Load(root)
 	if err != nil {
 		return nil, err
 	}
+	fmt.Fprintf(progress, "skillex: %s (%s)\n", reason, filepath.Join(".skillex", "index.db"))
 
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -99,27 +111,53 @@ func buildIndex(root, dbPath string, progress io.Writer) (*Registry, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := Refresh(reg, cfg, RefreshOptions{Root: root, DevMode: true}); err != nil {
+	res, err := Refresh(reg, cfg, RefreshOptions{Root: root, DevMode: true})
+	if err != nil {
 		reg.Close() //nolint:errcheck // returning the more relevant Refresh error
 		return nil, err
 	}
-	// Close before renaming so SQLite checkpoints the WAL into the main file and
+	// Surface best-effort scanner/parse warnings (skipped/unparseable skills) to
+	// stderr, matching `skillex refresh` — they are not fatal but aid diagnosis.
+	if len(res.Errors) > 0 {
+		fmt.Fprint(progress, FormatErrors(res.Errors))
+	}
+	// Close before installing so SQLite checkpoints the WAL into the main file and
 	// releases its sidecars, leaving tmpPath a self-contained database.
 	if err := reg.Close(); err != nil {
 		return nil, fmt.Errorf("finalizing built index: %w", err)
 	}
 
-	// Atomically swap the freshly built index into place. os.Rename replaces an
-	// existing file atomically on POSIX; if it fails (e.g. a stale file is in the
-	// way), clear the destination and retry.
-	if err := os.Rename(tmpPath, dbPath); err != nil {
-		removeDBFiles(dbPath)
-		if err := os.Rename(tmpPath, dbPath); err != nil {
-			return nil, fmt.Errorf("installing built index: %w", err)
-		}
+	final, err := installIndex(tmpPath, dbPath)
+	if err != nil {
+		return nil, err
 	}
 	installed = true
+	return final, nil
+}
 
+// installIndex moves the freshly built tmpPath into place at dbPath and returns an
+// open registry. On POSIX os.Rename atomically replaces any existing index, so the
+// rename normally succeeds. If it fails — most notably on Windows, where it cannot
+// replace an index.db that another process currently holds open — and a healthy
+// index is already present, that peer-built index is used instead (the temp is
+// discarded). Only when no usable index is present does it clear a stale/leftover
+// file and retry once.
+func installIndex(tmpPath, dbPath string) (*Registry, error) {
+	if err := osRename(tmpPath, dbPath); err == nil {
+		return Open(dbPath)
+	}
+	// Rename failed. A concurrent process may have installed the index first (its
+	// open handle blocks our rename on Windows). If a healthy index is now present,
+	// use it and drop our temp.
+	if reg, openErr := Open(dbPath); openErr == nil {
+		removeDBFiles(tmpPath)
+		return reg, nil
+	}
+	// Otherwise a stale/leftover file is blocking the rename — clear it and retry.
+	removeDBFiles(dbPath)
+	if err := osRename(tmpPath, dbPath); err != nil {
+		return nil, fmt.Errorf("installing built index: %w", err)
+	}
 	return Open(dbPath)
 }
 

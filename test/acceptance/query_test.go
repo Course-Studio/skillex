@@ -355,15 +355,19 @@ func TestQuery_JsonTypeFieldPresent(t *testing.T) {
 	}
 }
 
-// --- registry missing error ---
+// --- registry missing error (auto-build opt-out) ---
 
+// With SKILLEX_NO_AUTO_REFRESH set, query does NOT auto-build and preserves the
+// legacy "registry not found — run 'skillex refresh' first" error. (Without the
+// opt-out, a missing index is auto-built — see TestQuery_AutoBuildsMissingIndex.)
 func TestQuery_NoRegistryError(t *testing.T) {
+	t.Setenv("SKILLEX_NO_AUTO_REFRESH", "1")
 	dir := helpers.CopyFixture(t, "monorepo-pnpm")
 
 	res := helpers.Run(t, dir, "query", "--path", "packages/app-a/src/auth.ts")
 
 	if res.ExitCode == 0 {
-		t.Error("expected non-zero exit code when registry missing")
+		t.Error("expected non-zero exit code when registry missing and auto-refresh disabled")
 	}
 	if !strings.Contains(res.Stderr, "refresh") {
 		t.Errorf("expected 'refresh' guidance in stderr, got: %q", res.Stderr)

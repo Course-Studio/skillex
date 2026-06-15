@@ -280,7 +280,7 @@ Run through these scenarios looking for anything unexpected. No specific expecte
 ### Error Handling
 
 - [ ] Run `skillex refresh` with no `skillex.yaml` present.
-- [ ] Run `skillex query` before any refresh.
+- [ ] Run `skillex query` before any refresh — it should auto-build the index and return results (set `SKILLEX_NO_AUTO_REFRESH=1` to get the legacy "run skillex refresh first" error instead).
 - [ ] Run `skillex refresh` with a corrupted `skillex.yaml` (invalid YAML).
 - [ ] Run `skillex refresh` with a `skillex.yaml` that references nonexistent skill files.
 - [ ] Run `skillex query` with an invalid --path (nonexistent directory).
@@ -291,7 +291,7 @@ Run through these scenarios looking for anything unexpected. No specific expecte
 - [ ] Run `skillex get` with an invalid URL.
 - [ ] Run `skillex get` with a URL that returns non-markdown content.
 - [ ] Run `skillex import` with a binary file.
-- [ ] Run `skillex mcp` when no registry exists.
+- [ ] Run `skillex mcp` when no registry exists — it should auto-build the index and serve, with build progress on stderr only (the JSON-RPC stdout stream must stay byte-clean).
 - [ ] Kill `skillex refresh` mid-execution. Is the database left in a corrupt state?
 - [ ] Run two `skillex refresh` processes simultaneously.
 

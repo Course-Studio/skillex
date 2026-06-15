@@ -134,7 +134,7 @@ This creates:
 - `skillex.json` — configuration file (default)
 - `skills/repo.md` — a starter repo-wide skill
 - `AGENTS.md` — auto-generated agent instructions (MCP + CLI)
-- `.skillex/index.db` — the registry (rebuilt on each refresh)
+- `.skillex/index.db` — the registry (gitignored; auto-built on demand by `query`/`mcp`, rebuilt by `refresh`)
 
 To also configure MCP for your agent harness:
 
@@ -164,6 +164,11 @@ feature/<ticket>-<short-description>
 ```
 
 ### Rebuild the index
+
+`skillex query` and `skillex mcp` auto-build the index on first use, so this step is
+optional in a fresh checkout or git worktree — they just work. Run `refresh` explicitly
+to rebuild after changing skills, or before `skillex refresh --check` in CI. Set
+`SKILLEX_NO_AUTO_REFRESH=1` to disable the on-demand build.
 
 ```bash
 skillex refresh
@@ -596,6 +601,11 @@ skillex refresh --check
 # Fail if any test files are malformed
 skillex test validate --check
 ```
+
+`skillex query` and `skillex mcp` auto-build a missing index at runtime, so agents work
+in a fresh checkout or worktree without a manual refresh. CI assertions are unaffected:
+`skillex refresh --check` still fails on a missing or stale index (it does not auto-heal).
+The `postinstall: skillex refresh` below pre-builds the index so the first query is instant.
 
 Recommended `package.json` scripts:
 

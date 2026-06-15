@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,15 +34,17 @@ Configure in your agent harness:
   }`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root := repoRoot()
-			dbPath := filepath.Join(root, ".skillex", "index.db")
 
-			if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-				return fmt.Errorf("registry not found at %s — run 'skillex refresh' first", dbPath)
-			}
-
-			reg, err := registry.Open(dbPath)
+			// Auto-build a missing/unreadable index so the MCP server works in a
+			// fresh checkout or worktree. Build progress MUST go to stderr only —
+			// stdout carries the JSON-RPC protocol stream and must stay byte-clean.
+			reg, err := registry.EnsureIndex(root, os.Stderr)
 			if err != nil {
-				return fmt.Errorf("opening registry: %w", err)
+				if errors.Is(err, registry.ErrAutoRefreshDisabled) {
+					dbPath := filepath.Join(root, ".skillex", "index.db")
+					return fmt.Errorf("registry not found at %s — run 'skillex refresh' first", dbPath)
+				}
+				return err
 			}
 			defer reg.Close()
 

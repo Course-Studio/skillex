@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
 
 ## [Unreleased]
 
+## [0.10.0]
+
+- **Added:** `skillex query` and `skillex mcp` now auto-build a missing or unreadable `.skillex/index.db` on demand — reusing the existing transactional `refresh` builder — so skillex works in a fresh checkout or git worktree without running `skillex refresh` first. The index is built into a temporary database and installed with an atomic rename (falling back to a peer's index if a concurrent process installed one first), so concurrent cold starts on a fresh tree are safe — a competing process sees either no index or the fully-built one, never a half-built database. Build progress is written to stderr only, keeping the `mcp` JSON-RPC stdout stream byte-clean. A healthy existing index is opened as-is (no staleness rebuild — `skillex refresh --check` remains the staleness gate). Set `SKILLEX_NO_AUTO_REFRESH=1` to disable auto-build and restore the previous `registry not found — run 'skillex refresh' first` behavior. `skillex refresh --check` is unchanged and still fails on a missing/stale index; `skillex test validate --check` is unchanged and still fails on malformed or orphaned test files. Auto-build is scoped to `query`/`mcp` only; `refresh` and `doctor` behavior is unchanged. Course Studio fork enhancement with no upstream equivalent (Apache-2.0 §4(b) change notice).
+
 ## [0.9.0]
 
 - **Added:** project-local and package-shipped *packs*. A `pack.yaml` manifest bundles skill files with their own activation rules (`activate-when`: `files-present` / `files-matching` / `dependency-declared`) and scope strategies (`repo` / `subtree` / `directory` / `matching-files` / `nearest-ancestor` / `boundary`). Project packs are discovered at `skillex/pack.yaml` and `skillex/packs/*/pack.yaml`; packages may ship `skillex/pack.yaml`. Pack skills are indexed with `source_type: pack`. Ported from upstream skillex (#31–#34); additive — existing `skillex.json` rules, `skillex/public`, and `skillex/private` behavior are unchanged.

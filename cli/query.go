@@ -2,9 +2,9 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
@@ -51,15 +51,15 @@ Examples:
   skillex query --path packages/app-a/** --topic auth --format content`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root := repoRoot()
-			dbPath := filepath.Join(root, ".skillex", "index.db")
 
-			if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-				return fmt.Errorf("registry not found — run 'skillex refresh' first")
-			}
-
-			reg, err := registry.Open(dbPath)
+			// Auto-build a missing/unreadable index so query works in a fresh
+			// checkout or worktree. Progress goes to stderr; --json output stays clean.
+			reg, err := registry.EnsureIndex(root, os.Stderr)
 			if err != nil {
-				return fmt.Errorf("opening registry: %w — run 'skillex refresh' first", err)
+				if errors.Is(err, registry.ErrAutoRefreshDisabled) {
+					return fmt.Errorf("registry not found — run 'skillex refresh' first")
+				}
+				return err
 			}
 			defer reg.Close()
 

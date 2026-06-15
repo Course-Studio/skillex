@@ -173,6 +173,17 @@ func TestRefresh_CheckDetectsFrontmatterChange(t *testing.T) {
 	}
 }
 
+// refresh --check is a CI assertion: it must still FAIL on a missing/unbuilt
+// index — it must NOT auto-heal (auto-build is scoped to query/mcp only).
+func TestRefresh_CheckFailsOnMissingIndex(t *testing.T) {
+	dir := writeCorruptionFixture(t, threeSkillConfig)
+	// No prior refresh — the index is missing.
+	res := helpers.Run(t, dir, "refresh", "--check")
+	if res.ExitCode == 0 {
+		t.Errorf("refresh --check must exit non-zero on a missing index, got 0:\n%s", res.Stderr)
+	}
+}
+
 func TestRefresh_CheckPassesWhenFresh(t *testing.T) {
 	dir := helpers.CopyFixture(t, "monorepo-pnpm")
 

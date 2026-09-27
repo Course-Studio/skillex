@@ -79,15 +79,18 @@ func updateBridgeFile(path string, section string, markerStart string, markerEnd
 	return os.WriteFile(path, []byte(updated), 0o644)
 }
 
+// The blank lines around the import line are the shape markdown formatters
+// (oxfmt, prettier) produce; without them a formatter and refresh rewrite each
+// other on every run.
 func claudeSection(importPath string) string {
-	return claudeMarkerStart + "\n" +
-		"@" + importPath + "\n" +
+	return claudeMarkerStart + "\n\n" +
+		"@" + importPath + "\n\n" +
 		claudeMarkerEnd + "\n"
 }
 
 func geminiSection(importPath string) string {
-	return geminiMarkerStart + "\n" +
-		"@" + importPath + "\n" +
+	return geminiMarkerStart + "\n\n" +
+		"@" + importPath + "\n\n" +
 		geminiMarkerEnd + "\n"
 }
 

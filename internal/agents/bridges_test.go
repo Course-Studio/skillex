@@ -96,6 +96,43 @@ func TestUpdateBridgeFilesUpdatesExistingGeminiMd(t *testing.T) {
 	}
 }
 
+// The managed section must already be in the shape markdown formatters such
+// as oxfmt and prettier produce (blank lines around the import line), or a
+// formatter and the next refresh rewrite each other forever.
+func TestUpdateBridgeFilesWritesFormatterStableSection(t *testing.T) {
+	root := t.TempDir()
+	writeAgentTestFile(t, filepath.Join(root, "CLAUDE.md"), "# Project\n")
+	writeAgentTestFile(t, filepath.Join(root, "GEMINI.md"), "# Gemini\n")
+
+	if _, err := UpdateBridgeFiles(root); err != nil {
+		t.Fatalf("UpdateBridgeFiles() error = %v", err)
+	}
+
+	for name, want := range map[string]string{
+		"CLAUDE.md": "# Project\n\n<!-- skillex:claude:start -->\n\n@AGENTS.md\n\n<!-- skillex:claude:end -->\n",
+		"GEMINI.md": "# Gemini\n\n<!-- skillex:gemini:start -->\n\n@AGENTS.md\n\n<!-- skillex:gemini:end -->\n",
+	} {
+		if got := readAgentTestFile(t, filepath.Join(root, name)); got != want {
+			t.Fatalf("%s:\ngot:\n%q\nwant:\n%q", name, got, want)
+		}
+	}
+}
+
+func TestUpdateBridgeFilesRewritesUnformattedSection(t *testing.T) {
+	root := t.TempDir()
+	claudePath := filepath.Join(root, ".claude", "CLAUDE.md")
+	writeAgentTestFile(t, claudePath, "<!-- skillex:claude:start -->\n@../AGENTS.md\n<!-- skillex:claude:end -->\n")
+
+	if _, err := UpdateBridgeFiles(root); err != nil {
+		t.Fatalf("UpdateBridgeFiles() error = %v", err)
+	}
+
+	want := "<!-- skillex:claude:start -->\n\n@../AGENTS.md\n\n<!-- skillex:claude:end -->\n"
+	if got := readAgentTestFile(t, claudePath); got != want {
+		t.Fatalf(".claude/CLAUDE.md:\ngot:\n%q\nwant:\n%q", got, want)
+	}
+}
+
 func TestUpdateBridgeFilesIdempotent(t *testing.T) {
 	root := t.TempDir()
 	claudePath := filepath.Join(root, "CLAUDE.md")
